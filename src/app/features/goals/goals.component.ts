@@ -6,6 +6,8 @@ import { CurrencyService } from '../../core/money/currency.service';
 import { formatDate, formatRelative, toIsoDate } from '../../core/money/format';
 import { Goal, GoalType, PlannedExpense, PriorityLevel } from '../../core/models/domain.models';
 import { FinanceStore } from '../../core/state/finance.store';
+import { DialogDirective } from '../../shared/ui/dialog.directive';
+import { HumanizePipe } from '../../shared/ui/humanize.pipe';
 import { StatCardComponent } from '../../shared/ui/stat-card.component';
 import {
   ConfirmDialogComponent,
@@ -16,13 +18,13 @@ import {
 } from '../../shared/ui/ui-kit';
 
 const GOAL_TYPES: Array<{ value: GoalType; label: string }> = [
-  { value: 'emergency_fund', label: 'Emergency fund' },
+  { value: 'emergency_fund', label: 'Safety cushion (emergency fund)' },
   { value: 'travel', label: 'Travel' },
   { value: 'property', label: 'Property' },
   { value: 'vehicle', label: 'Vehicle' },
   { value: 'investment', label: 'Investment' },
-  { value: 'debt_payoff', label: 'Debt payoff' },
-  { value: 'financial_independence', label: 'Financial independence' },
+  { value: 'debt_payoff', label: 'Paying off debt' },
+  { value: 'financial_independence', label: 'Not needing to work' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -40,6 +42,8 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
     SkeletonComponent,
     EmptyStateComponent,
     ConfirmDialogComponent,
+    DialogDirective,
+    HumanizePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -63,14 +67,14 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
                         [caption]="onTrackCount() + ' on track'" />
           <sb-stat-card label="Total still to save" [value]="totalRemaining()"
                         [caption]="'Across all active goals'" />
-          <sb-stat-card label="Required per month" explain="goal-required" [value]="totalRequiredMonthly()"
-                        [caption]="'To hit every dated goal on time'" />
-          <sb-stat-card label="Committed within 3 months" explain="available-above-floor" [value]="committedSoon()"
-                        [invertDelta]="true" [caption]="'Unfunded planned expenses falling due'" />
+          <sb-stat-card label="Needed per month" explain="goal-required" [value]="totalRequiredMonthly()"
+                        [caption]="'To reach every dated goal on time'" />
+          <sb-stat-card label="Due in the next 3 months" explain="planned-required" [value]="committedSoon()"
+                        [invertDelta]="true" [caption]="'Planned expenses not yet saved for'" />
         </div>
 
         <!-- ------------------------------------------------------- -->
-        <sb-section title="Goals" explain="goal-required" subtitle="Progress, required contribution and whether each one is on schedule.">
+        <sb-section title="Goals" explain="goal-required" subtitle="How far along each goal is, what it needs each month, and whether it's on schedule.">
           @if (goals().length) {
             <div class="goals">
               @for (view of goals(); track view.goal.id) {
@@ -80,7 +84,7 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
                       <div class="row" style="gap:8px">
                         <h3 class="goal__name truncate">{{ view.goal.name }}</h3>
                         <span class="badge" [class]="'badge badge--' + priorityTone(view.goal.priority)">
-                          {{ view.goal.priority }}
+                          {{ view.goal.priority | humanize }} priority
                         </span>
                       </div>
                       <span class="goal__type">{{ goalTypeLabel(view.goal.goalType) }}</span>
@@ -103,20 +107,20 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
 
                   <dl class="goal__facts">
                     <div>
-                      <dt>Remaining</dt>
+                      <dt>Still to save</dt>
                       <dd>{{ money(view.remaining) }}</dd>
                     </div>
                     <div>
-                      <dt>Needed / month</dt>
+                      <dt>Needed a month</dt>
                       <dd>{{ view.requiredMonthly === null ? '—' : money(view.requiredMonthly) }}</dd>
                     </div>
                     <div>
-                      <dt>Contributing</dt>
+                      <dt>Putting in a month</dt>
                       <dd>{{ money(view.goal.monthlyContribution) }}</dd>
                     </div>
                     <div>
                       <dt>Target date</dt>
-                      <dd>{{ view.goal.targetDate ? date(view.goal.targetDate) : 'Open-ended' }}</dd>
+                      <dd>{{ view.goal.targetDate ? date(view.goal.targetDate) : 'No date' }}</dd>
                     </div>
                   </dl>
 
@@ -131,17 +135,17 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
 
                     @if (view.projectedCompletion) {
                       <span class="micro muted">
-                        At {{ money(view.goal.monthlyContribution) }}/month, complete {{ relative(view.projectedCompletion) }}
+                        At {{ money(view.goal.monthlyContribution) }} a month, you'll get there {{ relative(view.projectedCompletion) }}
                       </span>
                     } @else if (view.remaining > 0) {
-                      <span class="micro muted">Set a monthly contribution to project a completion date</span>
+                      <span class="micro muted">Add a monthly amount to see when you'll get there</span>
                     }
                   </footer>
                 </article>
               }
             </div>
           } @else {
-            <sb-empty title="No goals yet" text="Emergency fund, a vacation, a property refurb — anything with a number and a date.">
+            <sb-empty title="No goals yet" text="A safety cushion, a holiday, a new kitchen — anything with an amount and, ideally, a date.">
               <button type="button" class="btn btn--primary btn--sm" (click)="openGoal()">Add your first goal</button>
             </sb-empty>
           }
@@ -151,20 +155,20 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
         <sb-section
           title="Upcoming expenses"
           explain="planned-required"
-          subtitle="Planned spending that affects your available cash forecast."
+          subtitle="Big one-off costs coming up, like a holiday or an insurance renewal. Money for them is set aside from what's free to spend."
           [flush]="true"
         >
           @if (store.plannedExpenses().length) {
             <div class="table-wrap">
-              <table class="table">
+              <table class="table table--stack">
                 <thead>
                   <tr>
                     <th>Expense</th>
                     <th>Due</th>
                     <th class="t-right">Cost</th>
                     <th class="t-right">Saved</th>
-                    <th class="t-right">Remaining</th>
-                    <th class="t-right">Needed / month</th>
+                    <th class="t-right">Still to save</th>
+                    <th class="t-right">Needed a month</th>
                     <th style="width:130px">Progress</th>
                     <th></th>
                   </tr>
@@ -178,17 +182,17 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
                           <div class="table__meta">{{ view.expense.category }}</div>
                         }
                       </td>
-                      <td>
+                      <td data-label="Due">
                         <div class="num secondary">{{ date(view.expense.targetDate) }}</div>
                         <div class="table__meta" [class.neg]="view.isOverdue">
                           {{ relative(view.expense.targetDate) }}
                         </div>
                       </td>
-                      <td class="num">{{ money(view.expense.amount) }}</td>
-                      <td class="num secondary">{{ money(view.expense.savedAmount) }}</td>
-                      <td class="num">{{ money(view.remaining) }}</td>
-                      <td class="num" style="font-weight:600">{{ money(view.requiredMonthly) }}</td>
-                      <td>
+                      <td class="num" data-label="Cost">{{ money(view.expense.amount) }}</td>
+                      <td class="num secondary" data-label="Saved">{{ money(view.expense.savedAmount) }}</td>
+                      <td class="num" data-label="Still to save">{{ money(view.remaining) }}</td>
+                      <td class="num" style="font-weight:600" data-label="Needed a month">{{ money(view.requiredMonthly) }}</td>
+                      <td data-label="Progress">
                         <sb-meter
                           [value]="view.progress"
                           [showValue]="false"
@@ -205,15 +209,15 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
             </div>
 
           } @else {
-            <sb-empty title="Nothing planned" text="Add vacations, renewals and large purchases so they show up in your cash forecast.">
+            <sb-empty title="Nothing planned" text="Add holidays, renewals and big purchases so Snowball keeps money aside for them.">
               <button type="button" class="btn btn--primary btn--sm" (click)="openExpense()">Add planned expense</button>
             </sb-empty>
           }
 
           @if (store.plannedExpenses().length) {
             <div slot="foot" class="card__foot">
-              Snowball subtracts unfunded planned expenses from "available above security floor", so upcoming
-              spending can never look like free cash.
+              Anything due in the next 3 months that you haven't saved for yet is taken off "Free to spend or
+              invest", so upcoming costs never look like spare money.
             </div>
           }
         </sb-section>
@@ -222,13 +226,13 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
       <!-- ============================================================ -->
       @if (goalOpen()) {
         <div class="scrim" (click)="goalOpen.set(false)" role="presentation">
-          <div class="dialog" role="dialog" aria-modal="true" aria-label="Goal" (click)="$event.stopPropagation()">
+          <div class="dialog" role="dialog" aria-modal="true" aria-label="Goal" sbDialog (dismiss)="goalOpen.set(false)" (click)="$event.stopPropagation()">
             <h2 class="h2">{{ editingGoalId() ? 'Edit goal' : 'Add goal' }}</h2>
 
             <form [formGroup]="goalForm" (ngSubmit)="saveGoal()" class="col" style="gap:12px">
               <div class="field">
                 <label class="field__label" for="g-name">Name</label>
-                <input id="g-name" class="input" formControlName="name" placeholder="Emergency Fund" />
+                <input id="g-name" class="input" formControlName="name" placeholder="New car" />
               </div>
 
               <div class="grid grid--2" style="gap:12px">
@@ -244,7 +248,7 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
                   <label class="field__label" for="g-priority">Priority</label>
                   <select id="g-priority" class="select" formControlName="priority">
                     @for (option of priorities; track option) {
-                      <option [value]="option">{{ option }}</option>
+                      <option [value]="option">{{ option | humanize }}</option>
                     }
                   </select>
                 </div>
@@ -252,11 +256,11 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="g-target">Target amount</label>
+                  <label class="field__label" for="g-target">Goal amount</label>
                   <input id="g-target" class="input input--num" type="number" step="1" formControlName="targetAmount" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="g-current">Current amount</label>
+                  <label class="field__label" for="g-current">Saved so far</label>
                   <input id="g-current" class="input input--num" type="number" step="1" formControlName="currentAmount" />
                 </div>
               </div>
@@ -267,7 +271,7 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
                   <input id="g-date" class="input" type="date" formControlName="targetDate" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="g-contribution">Monthly contribution</label>
+                  <label class="field__label" for="g-contribution">Putting in each month</label>
                   <input id="g-contribution" class="input input--num" type="number" step="1" formControlName="monthlyContribution" />
                 </div>
               </div>
@@ -285,7 +289,7 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
               <label class="switch">
                 <input type="checkbox" formControlName="trackAccountBalance" />
                 <span class="switch__track"></span><span class="switch__thumb"></span>
-                <span class="small">Track the linked account balance automatically</span>
+                <span class="small">Use the linked account's balance as "saved so far"</span>
               </label>
 
               <div class="field">
@@ -309,13 +313,13 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
 
       @if (expenseOpen()) {
         <div class="scrim" (click)="expenseOpen.set(false)" role="presentation">
-          <div class="dialog" role="dialog" aria-modal="true" aria-label="Planned expense" (click)="$event.stopPropagation()">
+          <div class="dialog" role="dialog" aria-modal="true" aria-label="Planned expense" sbDialog (dismiss)="expenseOpen.set(false)" (click)="$event.stopPropagation()">
             <h2 class="h2">{{ editingExpenseId() ? 'Edit planned expense' : 'Add planned expense' }}</h2>
 
             <form [formGroup]="expenseForm" (ngSubmit)="saveExpense()" class="col" style="gap:12px">
               <div class="field">
                 <label class="field__label" for="e-name">Name</label>
-                <input id="e-name" class="input" formControlName="name" placeholder="Vacation" />
+                <input id="e-name" class="input" formControlName="name" placeholder="Summer holiday" />
               </div>
 
               <div class="grid grid--2" style="gap:12px">
@@ -331,14 +335,14 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="e-date">Target date</label>
+                  <label class="field__label" for="e-date">Due date</label>
                   <input id="e-date" class="input" type="date" formControlName="targetDate" />
                 </div>
                 <div class="field">
                   <label class="field__label" for="e-priority">Priority</label>
                   <select id="e-priority" class="select" formControlName="priority">
                     @for (option of priorities; track option) {
-                      <option [value]="option">{{ option }}</option>
+                      <option [value]="option">{{ option | humanize }}</option>
                     }
                   </select>
                 </div>
@@ -357,7 +361,7 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
               @if (expenseForm.controls.amount.value > 0 && expenseForm.controls.targetDate.value) {
                 <div class="estimate-note">
                   <span>
-                    You need <strong>{{ money(requiredForForm()) }}/month</strong> to have this money available by
+                    You need to put aside <strong>{{ money(requiredForForm()) }} a month</strong> to have this money ready by
                     {{ date(expenseForm.controls.targetDate.value) }}.
                   </span>
                 </div>
@@ -387,7 +391,7 @@ const PRIORITIES: PriorityLevel[] = ['critical', 'high', 'medium', 'low'];
       <sb-confirm
         [open]="confirmExpenseDelete()"
         title="Delete this planned expense?"
-        message="It will stop affecting your available-cash forecast."
+        message="Snowball will stop setting money aside for it."
         (confirmed)="deleteExpense()"
         (cancelled)="confirmExpenseDelete.set(false)"
       />

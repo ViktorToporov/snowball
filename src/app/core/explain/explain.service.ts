@@ -3,12 +3,177 @@ import { Injectable, inject } from '@angular/core';
 import { CurrencyService } from '../money/currency.service';
 import { formatDate } from '../money/format';
 import { FinanceStore } from '../state/finance.store';
-import { ExplainKey, Explanation, ExplainStep } from './explain.model';
+import { ExplainBasic, ExplainKey, Explanation, ExplainStep } from './explain.model';
+
+/** How each income/bill frequency reads in a sentence. */
+const FREQUENCY_WORDS: Record<string, string> = {
+  monthly: 'monthly',
+  quarterly: 'every 3 months',
+  annual: 'yearly',
+  one_off: 'one-off',
+};
+
+/** How each safety-score band reads in a sentence. */
+const BAND_WORDS: Record<string, string> = {
+  fragile: 'fragile',
+  building: 'still building',
+  solid: 'solid',
+  secure: 'very secure',
+};
+
+/**
+ * What every figure means, in plain words and without any numbers.
+ *
+ * Shown when there is not enough data to work the example through yet,
+ * so a new user still gets an answer from the ⓘ instead of nothing.
+ */
+const BASICS: Record<ExplainKey, ExplainBasic> = {
+  'net-worth': {
+    title: 'Net worth',
+    summary: 'Everything you own minus everything you owe. Add your accounts, investments and debts to see yours.',
+  },
+  'liquid-cash': {
+    title: 'Cash you can use now',
+    summary: 'Money you could spend today, across the accounts you have marked “Spendable now”.',
+    nextStep: { label: 'Add your accounts', route: '/cash-flow?tab=accounts' },
+  },
+  'total-cash': {
+    title: 'All your cash',
+    summary: 'The money in every one of your accounts added together, including money kept separate.',
+  },
+  'emergency-fund': {
+    title: 'Safety cushion',
+    summary: 'Money set aside for emergencies, like losing your job or a big repair. Three to six months of bills is a common rule of thumb.',
+    nextStep: { label: 'Set your safety cushion', route: '/settings' },
+  },
+  'available-above-floor': {
+    title: 'Free to spend or invest',
+    summary: 'Cash left after your safety cushion and the bills due in the next 3 months. It is not a monthly allowance.',
+  },
+  'security-score': {
+    title: 'Safety score',
+    summary: 'A score out of 100 for how well you could handle a money shock, like losing your income for a while.',
+  },
+  runway: {
+    title: 'Months you could live on savings',
+    summary: 'How long your emergency money would pay your fixed bills if your income stopped. Most guides suggest 3 to 6 months.',
+    nextStep: { label: 'Add your fixed bills', route: '/cash-flow?tab=bills' },
+  },
+  'monthly-income': {
+    title: 'Monthly income',
+    summary: 'All the money that comes in regularly, worked out as an average month.',
+    nextStep: { label: 'Add your income', route: '/cash-flow?tab=income' },
+  },
+  'essential-expenses': {
+    title: 'Fixed monthly bills',
+    summary: 'Bills you pay every month no matter what: rent or mortgage, utilities, insurance, subscriptions.',
+    nextStep: { label: 'Add your fixed bills', route: '/cash-flow?tab=bills' },
+  },
+  'total-spending': {
+    title: 'How spending is worked out',
+    summary: 'Snowball works out spending from your balances: whatever came in and did not end up saved or invested was spent.',
+  },
+  'flexible-spending': {
+    title: 'Everyday spending',
+    summary: 'Everything that isn’t a fixed bill — food, going out, shopping. Snowball works it out once it has a month or two of balances.',
+  },
+  'savings-capacity': {
+    title: 'Left over after bills',
+    summary: 'What is left each month once your fixed bills are paid, before everyday spending.',
+    nextStep: { label: 'Add your income', route: '/cash-flow?tab=income' },
+  },
+  'savings-rate': {
+    title: 'Share of income saved',
+    summary: 'How much of what you earn you keep, on average over the last three months. It needs a couple of monthly check-ins first.',
+    nextStep: { label: 'Do a check-in', route: '/check-in' },
+  },
+  'interest-per-year': {
+    title: 'Interest per year',
+    summary: 'What your cash earns over a year at the interest rates you entered for your accounts.',
+  },
+  'portfolio-value': {
+    title: 'Investments value',
+    summary: 'What all your investments are worth at the latest prices you entered.',
+  },
+  'portfolio-cost': {
+    title: 'Money you put in',
+    summary: 'What you paid for the investments you still hold.',
+  },
+  'unrealised-gain': {
+    title: 'Profit on paper (not sold yet)',
+    summary: 'How much more (or less) your investments are worth than what you paid. It only becomes real when you sell.',
+  },
+  'portfolio-return': {
+    title: 'Return on your investments',
+    summary: 'How much your investments have grown compared with the money you put in.',
+  },
+  'time-weighted-return': {
+    title: 'Yearly performance',
+    summary: 'How well your investments did per year. It ignores money you added, so it measures the investments, not your saving.',
+  },
+  'contributions-vs-growth': {
+    title: 'Money you put in vs growth',
+    summary: 'How much of your investments came from your own money, and how much the market added on top.',
+  },
+  'allocation-drift': {
+    title: 'Your mix vs your plan',
+    summary: 'Where your investment money actually sits, compared with the mix you planned.',
+  },
+  rebalance: {
+    title: 'How to get back to your plan',
+    summary: 'What you could buy or sell to bring your investment mix back in line with your plan.',
+  },
+  'property-equity': {
+    title: 'Your share of the home',
+    summary: 'What the property is worth minus what is still owed on the mortgage.',
+  },
+  'loan-to-value': {
+    title: 'Still owed',
+    summary: 'How much is still owed on the mortgage, as a percentage of the home’s value. Lower usually means better mortgage rates.',
+  },
+  'property-cash-flow': {
+    title: 'What the property leaves you',
+    summary: 'Rent coming in, minus running costs and the mortgage payment, each month.',
+  },
+  'rental-yield': {
+    title: 'Rent as % of value',
+    summary: 'A year’s rent as a percentage of what the property is worth, before and after running costs.',
+  },
+  'mortgage-split': {
+    title: 'Paid off the loan vs interest to the bank',
+    summary: 'How much of each mortgage payment pays down the loan, and how much goes to the bank as interest.',
+  },
+  'property-reserve': {
+    title: 'Repair fund',
+    summary: 'Money from the rent kept separate for repairs and months without a tenant.',
+  },
+  'goal-required': {
+    title: 'Monthly amount needed for a goal',
+    summary: 'What you would need to put aside each month to reach a goal by its date.',
+    nextStep: { label: 'Add a goal', route: '/goals' },
+  },
+  'planned-required': {
+    title: 'Saving up for a planned expense',
+    summary: 'What to set aside each month so the money is ready when a planned expense is due.',
+  },
+  'strategy-status': {
+    title: 'How your plan status is decided',
+    summary: 'Snowball compares how fast you are saving with your safety cushion, your checks and your upcoming expenses.',
+  },
+  forecast: {
+    title: 'How the forecast is built',
+    summary: 'A month-by-month projection from where you are today, using the assumptions you can see and change.',
+  },
+  'currency-conversion': {
+    title: 'Currency conversion',
+    summary: 'Money held in another currency is converted into your main currency using the latest rate Snowball has.',
+  },
+};
 
 /**
  * Builds a worked example for every calculated figure in the app.
  *
- * Each entry restates the method as an equation and then substitutes the
+ * Each entry restates the method in words and then substitutes the
  * user's *actual* current numbers, so any figure Snowball shows can be
  * checked by hand. Nothing here recomputes anything: it reads the same
  * signals the UI reads, which is what stops the explanation and the
@@ -32,6 +197,11 @@ export class ExplainService {
     return builder ? builder() : null;
   }
 
+  /** The plain-language fallback for a figure, with no numbers in it. */
+  basic(key: ExplainKey): ExplainBasic | null {
+    return BASICS[key] ?? null;
+  }
+
   private readonly builders: Partial<Record<ExplainKey, () => Explanation | null>> = {
     /* ---------------------------------------------------------------- */
     /* Position                                                          */
@@ -40,6 +210,7 @@ export class ExplainService {
     'net-worth': () => {
       const nw = this.store.netWorth();
       if (!nw) return null;
+      const change = this.store.deltas().netWorth;
 
       const steps: ExplainStep[] = nw.components.map((component) => ({
         label: component.label,
@@ -47,22 +218,26 @@ export class ExplainService {
         negative: component.kind === 'liability',
         hint:
           component.key === 'cash'
-            ? 'Every cash account except credit cards'
+            ? 'Every account except credit cards'
             : component.key === 'investments'
-              ? 'Quantity × current price for each holding'
+              ? 'Number of shares × latest price, for each investment'
               : component.key === 'property'
-                ? 'Your own estimated values, not market valuations'
+                ? 'Your own estimate of what it is worth'
                 : undefined,
       }));
 
       return {
-        title: 'Net worth',
-        summary: 'Everything you own, minus everything you owe.',
-        formula: 'Net worth = assets − liabilities',
+        ...BASICS['net-worth'],
+        meaning:
+          change === null || change === 0
+            ? `Your net worth is ${this.money(nw.netWorth)}.`
+            : `Your net worth is ${this.money(nw.netWorth)} — ${change > 0 ? 'up' : 'down'} ${this.money(Math.abs(change))} since last month.`,
+        summary: 'Everything you own minus everything you owe.',
+        formula: 'Net worth = what you own − what you owe',
         steps,
         result: { label: 'Net worth', value: this.money(nw.netWorth) },
-        note: 'Property and vehicle values are figures you entered. They are estimates, and the number is only as good as they are.',
-        source: 'Cash Flow (balances), Investments (holdings), Property, and the assets and liabilities on this page.',
+        note: 'Property and vehicle values are your own estimates, so this number is only as good as they are.',
+        source: 'Money & bills (balances), Investments, Property, and the Net worth page.',
       };
     },
 
@@ -72,20 +247,20 @@ export class ExplainService {
 
       const liquid = cash.accounts.filter((a) => a.countsAsLiquid && a.accountType !== 'credit_card');
       return {
-        title: 'Liquid cash',
-        summary: 'Money you could spend today, across every account you have flagged as liquid.',
-        formula: 'Liquid cash = Σ balances of accounts marked "counts as liquid"',
+        ...BASICS['liquid-cash'],
+        summary: 'Money you could spend today, across every account you have marked “Spendable now”.',
+        formula: 'Add up the balances of accounts marked “Spendable now”',
         steps: liquid.map((account) => ({
           label: account.name,
           value: this.money(account.balanceBase),
           hint:
             account.currency !== this.currency.baseCurrency()
-              ? `${this.currency.formatIn(account.balance, account.currency)} converted at the stored rate`
+              ? `${this.currency.formatIn(account.balance, account.currency)} converted at the latest rate`
               : undefined,
         })),
-        result: { label: 'Liquid cash', value: this.money(cash.liquidTotal) },
-        note: 'Accounts you have not marked liquid — a ring-fenced reserve, for instance — are deliberately left out, even though they still count toward net worth.',
-        source: 'The "Liquid" column on the Cash Flow page.',
+        result: { label: 'Cash you can use now', value: this.money(cash.liquidTotal) },
+        note: 'Accounts you keep separate — a repair fund, for instance — are left out here, but still count toward your net worth.',
+        source: 'The “Spendable now?” column on the Money & bills page.',
       };
     },
 
@@ -96,12 +271,12 @@ export class ExplainService {
       const total = counted.reduce((sum, a) => sum + a.balanceBase, 0);
 
       return {
-        title: 'Total cash',
-        summary: 'Every cash account, liquid or not. This is the figure spending is derived from.',
-        formula: 'Total cash = Σ balances of all non-card accounts',
+        ...BASICS['total-cash'],
+        summary: 'Every account added together, spendable now or not. Spending is worked out from this figure.',
+        formula: 'Add up the balances of all accounts except credit cards',
         steps: counted.map((account) => ({ label: account.name, value: this.money(account.balanceBase) })),
-        result: { label: 'Total cash', value: this.money(total) },
-        note: 'Measured across every account on purpose: moving money between two of your own accounts nets to zero here, so an internal transfer can never look like spending.',
+        result: { label: 'All your cash', value: this.money(total) },
+        note: 'Moving money between two of your own accounts doesn’t change this total, so it never looks like spending.',
       };
     },
 
@@ -109,24 +284,31 @@ export class ExplainService {
       const cash = this.store.cash();
       if (!cash) return null;
       const contributing = cash.accounts.filter((a) => a.countsAsEmergencyFund);
+      const essential = this.store.essentialExpenses();
+      if (cash.emergencyTarget <= 0) return null;
+
+      const covers = essential > 0 ? cash.emergencyTarget / essential : null;
+      const coverText = covers !== null ? ` Your cushion covers about ${covers.toFixed(1)} months of fixed bills.` : '';
 
       return {
-        title: 'Emergency fund',
-        summary: 'How much of your instant-access cash is earmarked as the safety net.',
-        formula: 'Progress = emergency accounts ÷ target × 100',
+        ...BASICS['emergency-fund'],
+        meaning:
+          cash.emergencyShortfall > 0
+            ? `You're ${this.pct(cash.emergencyProgress, 0)} of the way there — ${this.money(cash.emergencyShortfall)} still to go.${coverText}`
+            : `Your safety cushion is full.${coverText}`,
+        summary: 'How much of your emergency money is in place, against the safety cushion you set.',
+        nextStep: cash.emergencyShortfall > 0 ? { label: 'See your plan', route: '/strategy' } : undefined,
+        formula: 'Progress = money in emergency accounts ÷ safety cushion × 100',
         steps: [
           ...contributing.map((account) => ({ label: account.name, value: this.money(account.balanceBase) })),
-          { label: 'Target', value: this.money(cash.emergencyTarget), hint: 'Set in Settings → Security targets' },
+          { label: 'Safety cushion', value: this.money(cash.emergencyTarget), hint: 'Set in Settings → Safety cushion' },
         ],
         result: {
           label: 'Progress',
           value: `${this.money(cash.emergencyBalance)} ÷ ${this.money(cash.emergencyTarget)} = ${this.pct(cash.emergencyProgress, 0)}`,
         },
-        note:
-          cash.emergencyShortfall > 0
-            ? `${this.money(cash.emergencyShortfall)} still to go. Only accounts you tick as "counts toward the emergency fund" are included.`
-            : 'Fully funded. Progress is capped at 100% — a surplus shows up as cash above the floor instead.',
-        source: 'The "Emergency" column on the Cash Flow page.',
+        note: 'Only accounts you mark as emergency money count here. Progress stops at 100% — anything extra shows up as money free to spend or invest.',
+        source: 'Your accounts on the Money & bills page.',
       };
     },
 
@@ -136,22 +318,26 @@ export class ExplainService {
       if (!strategy || !cash) return null;
 
       return {
-        title: 'Available above the security floor',
-        summary: 'Cash you can deploy without breaking your own safety rules. Not a monthly allowance.',
-        formula: 'Available = liquid cash − security floor − unfunded planned spending due within 3 months',
+        ...BASICS['available-above-floor'],
+        meaning:
+          strategy.availableAboveFloor > 0
+            ? `${this.money(strategy.availableAboveFloor)} is free to spend or invest, after keeping your ${this.money(strategy.securityFloor)} safety cushion and money for bills due in the next 3 months.`
+            : 'Nothing is free right now: your cash is at or below your safety cushion plus the bills due in the next 3 months.',
+        summary: 'Cash left after your safety cushion and bills due in the next 3 months. Not a monthly allowance.',
+        formula: 'Free = cash you can use now − safety cushion − planned expenses due in the next 3 months',
         steps: [
-          { label: 'Liquid cash', value: this.money(cash.liquidTotal) },
-          { label: 'Security floor', value: this.money(strategy.securityFloor), negative: true, hint: 'Your emergency fund target' },
+          { label: 'Cash you can use now', value: this.money(cash.liquidTotal) },
+          { label: 'Safety cushion', value: this.money(strategy.securityFloor), negative: true },
           {
-            label: 'Committed within 3 months',
+            label: 'Planned expenses due in the next 3 months',
             value: this.money(strategy.committedSoon),
             negative: true,
-            hint: 'The unfunded remainder of planned expenses falling due soon',
+            hint: 'Only the part you haven’t already saved for',
           },
         ],
-        result: { label: 'Available', value: this.money(strategy.availableAboveFloor) },
-        note: 'Floored at zero — if the sum goes negative it means planned spending already exceeds what you have above the floor.',
-        source: 'Goals → Upcoming expenses, and Settings → Security targets.',
+        result: { label: 'Free to spend or invest', value: this.money(strategy.availableAboveFloor) },
+        note: 'It never shows less than zero. If the sum would be negative, your planned expenses are already bigger than what you have above your cushion.',
+        source: 'Goals → Upcoming expenses, and Settings → Safety cushion.',
       };
     },
 
@@ -162,18 +348,21 @@ export class ExplainService {
     'security-score': () => {
       const score = this.store.security();
       if (!score) return null;
+      const weakest = [...score.factors].sort((a, b) => a.score - b.score)[0];
 
       return {
-        title: 'Financial security score',
-        summary: 'Five weighted factors rolled into one 0–100 reading of how well you could absorb a shock.',
-        formula: 'Score = Σ (factor score × its weight)',
+        ...BASICS['security-score'],
+        meaning:
+          `${score.score} / 100 — ${BAND_WORDS[score.band] ?? score.band}. 60 and up is solid; 80 and up is very secure.` +
+          (weakest && weakest.score < 1 ? ` Most room to improve: ${weakest.label.toLowerCase()}.` : ''),
+        summary: 'Five things rolled into one score out of 100 for how well you could handle a money shock.',
+        formula: 'Score = add up (each part’s score × its points)',
         steps: score.factors.map((factor) => ({
-          label: `${factor.label} (max ${factor.weight})`,
+          label: `${factor.label} (up to ${factor.weight})`,
           value: `${Math.round(factor.score * factor.weight)} pts`,
           hint: factor.detail,
         })),
-        result: { label: 'Score', value: `${score.score} / 100 — ${score.band}` },
-        note: 'The same weights are implemented in the database function `security_score()`, so the app and the server can never disagree about this number.',
+        result: { label: 'Safety score', value: `${score.score} / 100 — ${BAND_WORDS[score.band] ?? score.band}` },
       };
     },
 
@@ -182,20 +371,33 @@ export class ExplainService {
       const cash = this.store.cash();
       const essential = this.store.essentialExpenses();
       if (!score || !cash || essential <= 0) return null;
+      const months = score.monthsOfRunway ?? 0;
+
+      const verdict =
+        months < 3
+          ? 'That’s under the 3 to 6 months most guides suggest, so building this up is a good first priority.'
+          : months <= 6
+            ? 'Most guides suggest 3 to 6 months, so you’re in good shape.'
+            : 'That’s more than the 3 to 6 months most guides suggest — you’re well covered.';
 
       return {
-        title: 'Expense runway',
-        summary: 'How many months you could cover your essentials from the emergency fund alone.',
-        formula: 'Runway = emergency fund ÷ essential monthly expenses',
+        ...BASICS.runway,
+        meaning: `${months} month${months === 1 ? '' : 's'}. ${verdict}`,
+        summary: 'How many months your emergency money alone would pay your fixed bills.',
+        nextStep:
+          months < 3
+            ? { label: 'Review your fixed bills', route: '/cash-flow?tab=bills' }
+            : { label: 'Update your balances', route: '/check-in' },
+        formula: 'Months = emergency money ÷ fixed monthly bills',
         steps: [
-          { label: 'Emergency fund', value: this.money(cash.emergencyBalance) },
-          { label: 'Essential expenses', value: `${this.money(essential)} / month`, hint: 'Your declared recurring baseline' },
+          { label: 'Emergency money', value: this.money(cash.emergencyBalance) },
+          { label: 'Fixed monthly bills', value: `${this.money(essential)} / month`, hint: 'The bills you entered on Money & bills' },
         ],
         result: {
-          label: 'Runway',
-          value: `${this.money(cash.emergencyBalance)} ÷ ${this.money(essential)} = ${score.monthsOfRunway} months`,
+          label: 'Months you could live on savings',
+          value: `${this.money(cash.emergencyBalance)} ÷ ${this.money(essential)} = ${months} months`,
         },
-        note: 'Assumes income stops entirely and flexible spending goes to zero — a deliberately pessimistic reading.',
+        note: 'This assumes your income stops completely and you only pay your fixed bills — a worst-case view, so you know where you stand.',
       };
     },
 
@@ -207,6 +409,8 @@ export class ExplainService {
       const data = this.store.data();
       const income = this.store.income();
       if (!data || !income) return null;
+      const active = data.incomeSources.filter((source) => source.active);
+      if (!active.length) return null;
 
       const factor: Record<string, string> = {
         monthly: '× 1',
@@ -216,22 +420,21 @@ export class ExplainService {
       };
 
       return {
-        title: 'Monthly income',
-        summary: 'Every active income source, normalised to what it contributes in an average month.',
-        formula: 'Monthly income = Σ (amount × frequency factor)',
-        steps: data.incomeSources
-          .filter((source) => source.active)
-          .map((source) => ({
-            label: `${source.name} (${source.frequency})`,
-            value: this.money(
-              this.store.convert()(source.amount, source.currency) *
-                (source.frequency === 'monthly' ? 1 : source.frequency === 'quarterly' ? 1 / 3 : source.frequency === 'annual' ? 1 / 12 : 0),
-            ),
-            hint: `${this.currency.formatIn(source.amount, source.currency)} ${factor[source.frequency]}`,
-          })),
+        ...BASICS['monthly-income'],
+        meaning: `About ${this.money(income.monthlyRecurring)} comes in during an average month.`,
+        nextStep: { label: 'Edit your income', route: '/cash-flow?tab=income' },
+        formula: 'Monthly income = add up each income, worked out per month',
+        steps: active.map((source) => ({
+          label: `${source.name} (${FREQUENCY_WORDS[source.frequency] ?? source.frequency})`,
+          value: this.money(
+            this.store.convert()(source.amount, source.currency) *
+              (source.frequency === 'monthly' ? 1 : source.frequency === 'quarterly' ? 1 / 3 : source.frequency === 'annual' ? 1 / 12 : 0),
+          ),
+          hint: `${this.currency.formatIn(source.amount, source.currency)} ${factor[source.frequency]}`,
+        })),
         result: { label: 'Per month', value: this.money(income.monthlyRecurring) },
-        note: 'A one-off source contributes nothing to the recurring figure — it shows up in the month it actually lands.',
-        source: 'Cash Flow → Income.',
+        note: 'One-off income isn’t counted here — it shows up in the month it actually arrives.',
+        source: 'Money & bills → Income.',
       };
     },
 
@@ -239,11 +442,18 @@ export class ExplainService {
       const expenses = this.store.recurringExpenses().filter((e) => e.active);
       const total = this.store.essentialExpenses();
       if (!expenses.length) return null;
+      const income = this.store.income()?.monthlyRecurring ?? 0;
+      const share = income > 0 ? (total / income) * 100 : null;
 
       return {
-        title: 'Essential monthly expenses',
-        summary: 'The cost of living you declared — the floor beneath every other calculation.',
-        formula: 'Essentials = Σ (amount × frequency factor)',
+        ...BASICS['essential-expenses'],
+        meaning:
+          share === null
+            ? `Your fixed bills come to ${this.money(total)} a month.`
+            : `Your fixed bills take ${this.pct(share, 0)} of your income. A common guideline is to keep must-pay costs to about half. ${share <= 50 ? 'You’re within that.' : 'Yours are above that, which leaves less room for everything else.'}`,
+        summary: 'The bills you pay every month no matter what. Many other figures are built on this one.',
+        nextStep: { label: 'Review your bills', route: '/cash-flow?tab=bills' },
+        formula: 'Fixed bills = add up each bill, worked out per month',
         steps: expenses.map((expense) => ({
           label: expense.name,
           value: this.money(
@@ -253,11 +463,11 @@ export class ExplainService {
           hint:
             expense.frequency === 'monthly'
               ? undefined
-              : `${this.currency.formatIn(expense.amount, expense.currency)} ${expense.frequency} — spread over the year`,
+              : `${this.currency.formatIn(expense.amount, expense.currency)} ${FREQUENCY_WORDS[expense.frequency] ?? expense.frequency} — spread over the year`,
         })),
         result: { label: 'Per month', value: this.money(total) },
-        note: 'This is a declaration, not a measurement. It drives your runway and the line between essential and flexible spending, so it is worth keeping honest.',
-        source: 'Cash Flow → Recurring expenses.',
+        note: 'These are the bills you entered, so keep them up to date — they decide how many months you could live on savings.',
+        source: 'Money & bills → Fixed bills.',
       };
     },
 
@@ -271,22 +481,22 @@ export class ExplainService {
       const opening = cash.at(-3)?.value ?? 0;
 
       return {
-        title: 'How spending is worked out',
-        summary: 'Snowball has no transaction list. Spending is whatever your income did not turn into cash or investments.',
-        formula: 'Spending = income − investment contributions − change in total cash',
+        ...BASICS['total-spending'],
+        summary: 'You don’t list purchases in Snowball. Spending is whatever came in and didn’t end up as cash or investments.',
+        formula: 'Spending = income − money invested − change in all your cash',
         steps: [
           { label: 'Income that month', value: this.money(month.income) },
-          { label: 'Into investments', value: this.money(month.contributed), negative: true },
+          { label: 'Money invested', value: this.money(month.contributed), negative: true },
           {
-            label: 'Change in total cash',
+            label: 'Change in all your cash',
             value: this.money(closing - opening),
             negative: true,
             hint: `${this.money(opening)} at the start → ${this.money(closing)} at the end`,
           },
         ],
         result: { label: 'Spent', value: this.money(month.totalExpenses) },
-        note: 'Because cash is measured across every account, moving money between your own accounts cancels out and is never counted as spending. Keep balances current and this figure stays honest.',
-        source: 'Account balances and investment activity — nothing else.',
+        note: 'Moving money between your own accounts cancels out, so it never counts as spending. Keep your balances up to date and this stays accurate.',
+        source: 'Your account balances and investment activity.',
       };
     },
 
@@ -296,15 +506,15 @@ export class ExplainService {
       if (!month) return null;
 
       return {
-        title: 'Flexible spending',
-        summary: 'Everything you spent beyond the declared baseline. Never itemised — it is a residual.',
-        formula: 'Flexible = total spending − essential baseline',
+        ...BASICS['flexible-spending'],
+        summary: 'Everything you spent that isn’t a fixed bill. Snowball doesn’t list what it was — just the total.',
+        formula: 'Everyday spending = everything you spent − fixed bills',
         steps: [
-          { label: 'Total spent', value: this.money(month.totalExpenses), hint: 'Derived from your balances' },
-          { label: 'Essential baseline', value: this.money(month.essential), negative: true },
+          { label: 'Everything you spent', value: this.money(month.totalExpenses), hint: 'Worked out from your balances' },
+          { label: 'Fixed bills', value: this.money(month.essential), negative: true },
         ],
-        result: { label: 'Flexible', value: this.money(month.flexible) },
-        note: 'Snowball never claims to know what this was made of, because it was not recorded. It varies month to month by design — that is the point of the flexible-spending model.',
+        result: { label: 'Everyday spending', value: this.money(month.flexible) },
+        note: 'It’s normal for this to go up and down from month to month. There’s no budget to stick to — the less you spend here, the faster your plan moves.',
       };
     },
 
@@ -312,20 +522,21 @@ export class ExplainService {
       const income = this.store.income()?.monthlyRecurring ?? 0;
       const essential = this.store.essentialExpenses();
       if (income <= 0) return null;
+      const left = income - essential;
 
       return {
-        title: 'Savings capacity',
-        summary: 'What is left over each month once the essentials are paid, before any flexible spending.',
-        formula: 'Capacity = monthly income − essential expenses',
+        ...BASICS['savings-capacity'],
+        meaning: `${this.money(left)} is left each month after fixed bills — ${this.pct((left / income) * 100, 0)} of your income.`,
+        formula: 'Left over = monthly income − fixed bills',
         steps: [
           { label: 'Monthly income', value: this.money(income) },
-          { label: 'Essential expenses', value: this.money(essential), negative: true },
+          { label: 'Fixed bills', value: this.money(essential), negative: true },
         ],
         result: {
-          label: 'Capacity',
-          value: `${this.money(income - essential)} (${this.pct(((income - essential) / income) * 100, 0)} of income)`,
+          label: 'Left over after bills',
+          value: `${this.money(left)} (${this.pct((left / income) * 100, 0)} of income)`,
         },
-        note: 'A ceiling, not a forecast. What you actually save depends on flexible spending, which is deliberately uncapped.',
+        note: 'This is the most you could save. What you actually save depends on your everyday spending.',
       };
     },
 
@@ -334,17 +545,28 @@ export class ExplainService {
       if (completed.length < 2) return null;
       const average = completed.reduce((sum, m) => sum + m.savingsRate, 0) / completed.length;
 
+      const verdict =
+        average < 0
+          ? 'You spent more than you earned on average.'
+          : average < 10
+            ? 'Many guides suggest saving 10 to 20% of what you earn, so there may be room to save a bit more.'
+            : average <= 20
+              ? 'Many guides suggest saving 10 to 20% of what you earn — you’re right in that range.'
+              : 'Many guides suggest saving 10 to 20% of what you earn — you’re doing better than that.';
+
       return {
-        title: 'Savings rate',
-        summary: 'The share of income you did not spend, averaged over the last three complete months.',
-        formula: 'Savings rate = (income − spending) ÷ income',
+        ...BASICS['savings-rate'],
+        meaning: `You kept ${this.pct(average, 0)} of your income. ${verdict}`,
+        summary: 'How much of what you earn you didn’t spend, on average over the last three full months.',
+        nextStep: undefined,
+        formula: 'Share saved = (income − spending) ÷ income',
         steps: completed.map((month) => ({
           label: formatDate(month.month, this.currency.locale()).slice(3),
           value: this.pct(month.savingsRate, 0),
           hint: `${this.money(month.income)} in, ${this.money(month.totalExpenses)} spent`,
         })),
         result: { label: 'Three-month average', value: this.pct(average, 1) },
-        note: 'The month in progress is excluded — it is only part-paid, and including it would make every reading look like a collapse.',
+        note: 'This month isn’t included yet, because it isn’t over.',
       };
     },
 
@@ -352,20 +574,20 @@ export class ExplainService {
       const cash = this.store.cash();
       if (!cash) return null;
       const earning = cash.accounts.filter((a) => a.interestRate > 0);
+      if (!earning.length) return null;
 
       return {
-        title: 'Interest per year',
-        summary: 'What your cash earns over twelve months at the rates you recorded.',
-        formula: 'Interest = Σ (balance × APY)',
+        ...BASICS['interest-per-year'],
+        formula: 'Interest = add up (balance × interest rate per year)',
         steps: earning.map((account) => ({
-          label: `${account.name} @ ${this.pct(account.interestRate * 100, 2)}`,
+          label: `${account.name} at ${this.pct(account.interestRate * 100, 2)}`,
           value: this.money(account.annualInterest),
         })),
         result: {
           label: 'Per year',
-          value: `${this.money(cash.annualInterest)} — a blended ${this.pct(cash.blendedRate, 2)}`,
+          value: `${this.money(cash.annualInterest)} — an average interest rate of ${this.pct(cash.blendedRate, 2)}`,
         },
-        note: 'Simple interest at today’s balances and rates. Both move, so treat it as an indication rather than a promise.',
+        note: 'Based on today’s balances and rates. Both change, so treat it as a rough guide, not a promise.',
       };
     },
 
@@ -375,73 +597,96 @@ export class ExplainService {
 
     'portfolio-value': () => {
       const portfolio = this.store.portfolio();
-      if (!portfolio) return null;
+      if (!portfolio || !portfolio.positions.length) return null;
 
       return {
-        title: 'Portfolio value',
-        summary: 'Every holding valued at the last price you recorded.',
-        formula: 'Value = Σ (quantity × current price), converted to your base currency',
+        ...BASICS['portfolio-value'],
+        formula: 'Value = add up (number of shares × latest price), converted to your currency',
         steps: portfolio.positions.map((position) => ({
           label: position.investment.name,
           value: this.money(position.currentValueBase),
           hint: `${position.investment.quantity} × ${this.currency.formatIn(position.investment.currentPrice, position.investment.currency)}`,
         })),
-        result: { label: 'Portfolio value', value: this.money(portfolio.totalValue) },
-        note: 'The product is never stored, so a stale total can never drift away from the quantities and prices. Update prices on the Investments page and every figure follows.',
+        result: { label: 'Investments value', value: this.money(portfolio.totalValue) },
+        note: 'Update prices on the Investments page and every figure follows.',
+      };
+    },
+
+    'portfolio-cost': () => {
+      const portfolio = this.store.portfolio();
+      if (!portfolio || !portfolio.positions.length) return null;
+
+      return {
+        ...BASICS['portfolio-cost'],
+        summary: 'What you paid for the investments you still hold — not counting anything you have already sold.',
+        formula: 'Money you put in = add up (number of shares × price you paid per share), converted to your currency',
+        steps: portfolio.positions.map((position) => ({
+          label: position.investment.name,
+          value: this.money(position.costBasisBase),
+          hint: `${position.investment.quantity} × ${this.currency.formatIn(position.investment.averageCost, position.investment.currency)}`,
+        })),
+        result: { label: 'Money you put in', value: this.money(portfolio.totalCost) },
+        note: 'The price you paid per share is the average of your buys, so buying more at a different price changes it.',
+        source: 'Investments → Record activity.',
       };
     },
 
     'unrealised-gain': () => {
       const portfolio = this.store.portfolio();
-      if (!portfolio) return null;
+      if (!portfolio || !portfolio.positions.length) return null;
+      const gain = portfolio.unrealisedGain;
 
       return {
-        title: 'Unrealised gain',
-        summary: 'What your holdings are worth versus what you paid for them, before selling anything.',
-        formula: 'Unrealised gain = current value − cost basis',
+        ...BASICS['unrealised-gain'],
+        meaning:
+          gain >= 0
+            ? `Your investments are worth ${this.money(gain)} more than you paid (${this.pct(portfolio.totalReturnPercent, 1)}). It’s a profit on paper until you sell.`
+            : `Your investments are worth ${this.money(-gain)} less than you paid (${this.pct(portfolio.totalReturnPercent, 1)}). Ups and downs are normal — it only becomes a real loss if you sell.`,
+        formula: 'Profit on paper = what it’s worth now − money you put in',
         steps: [
-          { label: 'Current value', value: this.money(portfolio.totalValue) },
-          { label: 'Cost basis', value: this.money(portfolio.totalCost), negative: true, hint: 'Σ (quantity × average cost)' },
+          { label: 'Worth now', value: this.money(portfolio.totalValue) },
+          { label: 'Money you put in', value: this.money(portfolio.totalCost), negative: true, hint: 'Add up (shares × price you paid per share)' },
         ],
         result: {
-          label: 'Unrealised',
-          value: `${this.money(portfolio.unrealisedGain)} (${this.pct(portfolio.totalReturnPercent, 2)} on cost)`,
+          label: 'Profit on paper',
+          value: `${this.money(gain)} (${this.pct(portfolio.totalReturnPercent, 2)} on what you paid)`,
         },
-        note: `Separate from realised gain of ${this.money(portfolio.realisedGain)}, which is locked in from holdings already sold.`,
+        note: `Profit from sales you’ve already made (${this.money(portfolio.realisedGain)}) is counted separately.`,
       };
     },
 
-    'portfolio-return': () => this.builders['unrealised-gain']!(),
+    'portfolio-return': () => {
+      const base = this.builders['unrealised-gain']!();
+      return base ? { ...base, title: BASICS['portfolio-return'].title } : null;
+    },
 
     'time-weighted-return': () => {
       const portfolio = this.store.portfolio();
       if (!portfolio || portfolio.annualisedReturn === null) return null;
 
       return {
-        title: 'Time-weighted return',
-        summary: 'How your investments performed, with the effect of paying more in stripped out.',
-        formula: 'Chain-link each period’s return, then annualise',
+        ...BASICS['time-weighted-return'],
+        formula: 'Work out the growth in each period without the money you added, then turn it into a per-year figure',
         steps: [
-          { label: 'Portfolio value', value: this.money(portfolio.totalValue) },
-          { label: 'Contributions to date', value: this.money(portfolio.totalContributions) },
+          { label: 'Investments value', value: this.money(portfolio.totalValue) },
+          { label: 'Money you put in', value: this.money(portfolio.totalContributions) },
           { label: 'Market growth', value: this.money(portfolio.marketGrowth), hint: 'Value minus what you paid in' },
         ],
-        result: { label: 'Annualised', value: this.pct(portfolio.annualisedReturn, 2) },
-        note: 'Each period excludes the money added during it, so a big contribution never shows up as good performance. This is the honest way to judge the investments rather than the saver.',
+        result: { label: 'Per year', value: this.pct(portfolio.annualisedReturn, 2) },
+        note: 'Money you add is left out of each period, so a big deposit never looks like good performance. It shows how the investments did, not how much you saved.',
       };
     },
 
     'contributions-vs-growth': () => {
       const portfolio = this.store.portfolio();
-      if (!portfolio) return null;
+      if (!portfolio || !portfolio.positions.length) return null;
 
       return {
-        title: 'Contributions vs growth',
-        summary: 'How much of the portfolio you built by paying in, and how much the market added.',
-        formula: 'Market growth = portfolio value − money paid in',
+        ...BASICS['contributions-vs-growth'],
+        formula: 'Market growth = investments value − money you put in',
         steps: [
-          { label: 'Portfolio value', value: this.money(portfolio.totalValue) },
-          { label: 'Contributions (buys − sells)', value: this.money(portfolio.totalContributions), negative: true },
+          { label: 'Investments value', value: this.money(portfolio.totalValue) },
+          { label: 'Money you put in (buys − sells)', value: this.money(portfolio.totalContributions), negative: true },
         ],
         result: { label: 'Market growth', value: this.money(portfolio.marketGrowth) },
         note: `Dividends received (${this.money(portfolio.dividendsReceived)}) and fees paid (${this.money(portfolio.feesPaid)}) are tracked separately.`,
@@ -454,22 +699,23 @@ export class ExplainService {
       const portfolio = this.store.portfolio();
       if (!buckets.length || !portfolio) return null;
       const worst = [...buckets].sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift))[0];
+      const verdict =
+        worst.status === 'overweight' ? 'Too much' : worst.status === 'underweight' ? 'Too little' : 'Close to plan';
 
       return {
-        title: 'Target vs actual allocation',
-        summary: 'Where your money actually sits, against the model you set — and how far it has drifted.',
-        formula: 'Actual % = bucket value ÷ portfolio value · Drift = actual % − target %',
+        ...BASICS['allocation-drift'],
+        formula: 'Your share = this group’s value ÷ all investments · Difference = your share − planned share',
         steps: [
-          { label: `${worst.bucket} — value`, value: this.money(worst.actualValue), hint: 'A holding can be split across several buckets by weight' },
-          { label: 'Portfolio value', value: this.money(portfolio.totalValue) },
-          { label: 'Actual share', value: this.pct(worst.actualPercentage, 1) },
-          { label: 'Target share', value: this.pct(worst.targetPercentage, 1), negative: true },
+          { label: `${worst.bucket} — value`, value: this.money(worst.actualValue), hint: 'One investment can be split across several groups' },
+          { label: 'All investments', value: this.money(portfolio.totalValue) },
+          { label: 'Your share', value: this.pct(worst.actualPercentage, 1) },
+          { label: 'Planned share', value: this.pct(worst.targetPercentage, 1), negative: true },
         ],
         result: {
-          label: `${worst.bucket} drift`,
-          value: `${this.pct(worst.drift, 1)} — ${worst.status.replace('-', ' ')} (tolerance ±${this.pct(worst.toleranceBand, 0)})`,
+          label: `${worst.bucket}`,
+          value: `${this.pct(Math.abs(worst.drift), 1)} ${worst.drift >= 0 ? 'more' : 'less'} than planned — ${verdict.toLowerCase()} (allowed ±${this.pct(worst.toleranceBand, 0)})`,
         },
-        note: 'A bucket is only flagged once it drifts beyond its own tolerance band, so ordinary market movement does not generate noise.',
+        note: 'A group is only flagged once it moves further from your plan than you allow, so normal market ups and downs don’t cause alarms.',
       };
     },
 
@@ -480,20 +726,19 @@ export class ExplainService {
       const first = suggestions[0];
 
       return {
-        title: 'Rebalance suggestions',
-        summary: 'What it would take to bring each bucket back inside its tolerance band.',
-        formula: 'Adjustment = (target % × portfolio value) − current bucket value',
+        ...BASICS.rebalance,
+        formula: 'Amount = (planned share × all investments) − what this group is worth now',
         steps: [
-          { label: 'Portfolio value', value: this.money(portfolio.totalValue) },
-          { label: `${first.bucket} target`, value: this.pct(first.targetPercentage, 1) },
-          { label: 'Target value', value: this.money((first.targetPercentage / 100) * portfolio.totalValue) },
-          { label: 'Actual value', value: this.money((first.actualPercentage / 100) * portfolio.totalValue), negative: true },
+          { label: 'All investments', value: this.money(portfolio.totalValue) },
+          { label: `${first.bucket} planned share`, value: this.pct(first.targetPercentage, 1) },
+          { label: 'Planned value', value: this.money((first.targetPercentage / 100) * portfolio.totalValue) },
+          { label: 'Worth now', value: this.money((first.actualPercentage / 100) * portfolio.totalValue), negative: true },
         ],
         result: {
-          label: first.action === 'buy' ? `Add to ${first.bucket}` : `Trim ${first.bucket}`,
+          label: first.action === 'buy' ? `Add to ${first.bucket}` : `Sell some ${first.bucket}`,
           value: this.money(first.amount),
         },
-        note: 'Suggestions only — Snowball never places a trade. Directing new contributions at underweight buckets avoids selling, and the tax and fees that come with it.',
+        note: 'Suggestions only — Snowball never buys or sells anything. Putting new money into the groups you have too little of avoids selling, and the tax and fees that come with it.',
       };
     },
 
@@ -507,9 +752,8 @@ export class ExplainService {
       const convert = this.store.convert();
 
       return {
-        title: 'Property equity',
-        summary: 'The share of the property that is actually yours rather than the lender’s.',
-        formula: 'Equity = estimated value − mortgage balance',
+        ...BASICS['property-equity'],
+        formula: 'Your share = estimated value − still owed on the mortgage',
         steps: [
           {
             label: 'Estimated value',
@@ -517,13 +761,13 @@ export class ExplainService {
             hint: 'Your own estimate — update it when you get a better one',
           },
           {
-            label: 'Mortgage balance',
+            label: 'Still owed',
             value: this.money(convert(first.property.mortgageBalance, first.property.currency)),
             negative: true,
           },
         ],
-        result: { label: 'Equity', value: this.money(first.equity) },
-        note: 'Equity grows two ways: the value rising, and each mortgage payment chipping away at the balance.',
+        result: { label: 'Your share', value: this.money(first.equity) },
+        note: 'Your share grows two ways: the home going up in value, and each mortgage payment paying off some of the loan.',
       };
     },
 
@@ -531,17 +775,27 @@ export class ExplainService {
       const first = this.store.properties()[0];
       if (!first) return null;
       const convert = this.store.convert();
+      const ltv = first.loanToValue;
+
+      const verdict =
+        ltv <= 0
+          ? 'The mortgage is paid off.'
+          : ltv <= 60
+            ? 'Under 60% usually gets you the best mortgage rates.'
+            : ltv <= 80
+              ? 'Under 80% usually gets you better mortgage rates; getting under 60% gets the best ones.'
+              : 'Getting under 80% usually unlocks better mortgage rates when you next switch deals.';
 
       return {
-        title: 'Loan-to-value',
-        summary: 'How much of the property is still financed by debt.',
-        formula: 'LTV = mortgage balance ÷ estimated value × 100',
+        ...BASICS['loan-to-value'],
+        meaning: `You still owe ${this.pct(ltv, 0)} of the home’s value. ${verdict}`,
+        formula: 'Still owed % = mortgage left ÷ estimated value × 100',
         steps: [
-          { label: 'Mortgage balance', value: this.money(convert(first.property.mortgageBalance, first.property.currency)) },
+          { label: 'Mortgage left', value: this.money(convert(first.property.mortgageBalance, first.property.currency)) },
           { label: 'Estimated value', value: this.money(convert(first.property.estimatedValue, first.property.currency)) },
         ],
-        result: { label: 'LTV', value: this.pct(first.loanToValue, 1) },
-        note: 'Lenders price on this. Falling below common thresholds — often 80% or 60% — can matter at remortgage time.',
+        result: { label: 'Still owed', value: this.pct(ltv, 1) },
+        note: 'Lenders look at this when you remortgage. Common thresholds are 80% and 60%.',
       };
     },
 
@@ -551,16 +805,15 @@ export class ExplainService {
       const convert = this.store.convert();
 
       return {
-        title: 'Property cash flow',
-        summary: 'What the rent is left as, once the property has paid for itself.',
-        formula: 'Cash flow = rent − running costs − mortgage payment',
+        ...BASICS['property-cash-flow'],
+        formula: 'Left each month = rent − running costs − mortgage payment',
         steps: [
           { label: 'Rent received', value: this.money(convert(let_.property.monthlyRent, let_.property.currency)) },
           { label: 'Running costs', value: this.money(convert(let_.property.monthlyPropertyExpenses, let_.property.currency)), negative: true },
           { label: 'Mortgage payment', value: this.money(convert(let_.property.monthlyPayment, let_.property.currency)), negative: true },
         ],
         result: { label: 'Per month', value: this.money(let_.monthlyCashFlow) },
-        note: 'The surplus is ring-fenced in the Property Reserve rather than treated as income, so a good month on the rental never quietly becomes lifestyle money.',
+        note: 'Anything left over goes into the repair fund rather than your everyday money, so a good month on the rental doesn’t quietly get spent.',
       };
     },
 
@@ -573,19 +826,18 @@ export class ExplainService {
       const value = convert(let_.property.estimatedValue, let_.property.currency);
 
       return {
-        title: 'Rental yield',
-        summary: 'What the property returns each year as a percentage of what it is worth.',
-        formula: 'Gross = rent × 12 ÷ value · Net = (rent − costs) × 12 ÷ value',
+        ...BASICS['rental-yield'],
+        formula: 'Before costs = rent × 12 ÷ value · After costs = (rent − costs) × 12 ÷ value',
         steps: [
-          { label: 'Annual rent', value: this.money(rent * 12), hint: `${this.money(rent)} × 12` },
-          { label: 'Annual running costs', value: this.money(costs * 12), negative: true },
+          { label: 'Rent per year', value: this.money(rent * 12), hint: `${this.money(rent)} × 12` },
+          { label: 'Running costs per year', value: this.money(costs * 12), negative: true },
           { label: 'Property value', value: this.money(value) },
         ],
         result: {
-          label: 'Yield',
-          value: `${this.pct(let_.grossYield, 2)} gross · ${this.pct(let_.netYield, 2)} net`,
+          label: 'Rent as % of value',
+          value: `${this.pct(let_.grossYield, 2)} before costs · ${this.pct(let_.netYield, 2)} after`,
         },
-        note: 'Neither figure deducts the mortgage — yield measures the asset, not how you financed it. Cash flow is the one that includes the loan.',
+        note: 'Neither figure takes off the mortgage — this measures the property itself, not how you paid for it. “What the property leaves you” is the figure that includes the loan.',
       };
     },
 
@@ -596,17 +848,16 @@ export class ExplainService {
       const balance = convert(first.property.mortgageBalance, first.property.currency);
 
       return {
-        title: 'Interest vs principal',
-        summary: 'How much of this month’s payment services the debt, and how much actually reduces it.',
-        formula: 'Interest = balance × annual rate ÷ 12 · Principal = payment − interest',
+        ...BASICS['mortgage-split'],
+        formula: 'Interest = mortgage left × interest rate ÷ 12 · Paid off the loan = payment − interest',
         steps: [
-          { label: 'Balance', value: this.money(balance) },
-          { label: 'Annual rate', value: this.pct(first.property.mortgageInterestRate * 100, 2) },
-          { label: 'Monthly interest', value: this.money(first.monthlyInterest), hint: `${this.money(balance)} × ${this.pct(first.property.mortgageInterestRate * 100, 2)} ÷ 12` },
-          { label: 'Payment', value: this.money(convert(first.property.monthlyPayment, first.property.currency)) },
+          { label: 'Mortgage left', value: this.money(balance) },
+          { label: 'Interest rate per year', value: this.pct(first.property.mortgageInterestRate * 100, 2) },
+          { label: 'Interest to the bank this month', value: this.money(first.monthlyInterest), hint: `${this.money(balance)} × ${this.pct(first.property.mortgageInterestRate * 100, 2)} ÷ 12` },
+          { label: 'Monthly payment', value: this.money(convert(first.property.monthlyPayment, first.property.currency)) },
         ],
-        result: { label: 'Off the balance', value: this.money(first.monthlyPrincipal) },
-        note: 'The principal share grows every month as the balance falls — which is why equity builds slowly at first and then accelerates.',
+        result: { label: 'Paid off the loan', value: this.money(first.monthlyPrincipal) },
+        note: 'As the loan shrinks, more of each payment goes to paying it off — which is why your share of the home grows slowly at first, then faster.',
       };
     },
 
@@ -618,19 +869,18 @@ export class ExplainService {
       const target = convert(let_.property.maintenanceReserveTarget, let_.property.currency);
 
       return {
-        title: 'Property reserve',
-        summary: 'Rental surplus set aside for repairs and empty months, kept away from everyday money.',
-        formula: 'Months to target = (target − balance) ÷ monthly surplus',
+        ...BASICS['property-reserve'],
+        formula: 'Months to fill = (goal − balance) ÷ what the rent leaves each month',
         steps: [
-          { label: 'Reserve balance', value: this.money(balance) },
-          { label: 'Target', value: this.money(target) },
-          { label: 'Monthly surplus', value: this.money(let_.monthlyCashFlow) },
+          { label: 'Repair fund balance', value: this.money(balance) },
+          { label: 'Goal', value: this.money(target) },
+          { label: 'Rent left over each month', value: this.money(let_.monthlyCashFlow) },
         ],
         result: {
-          label: 'Funded',
+          label: 'Filled',
           value: target > 0 ? this.pct((balance / target) * 100, 0) : '—',
         },
-        note: 'Ring-fenced on purpose: a boiler or a void month should come out of here, not out of your emergency fund.',
+        note: 'Kept separate on purpose: a new boiler or a month without a tenant should come out of here, not out of your safety cushion.',
       };
     },
 
@@ -643,16 +893,16 @@ export class ExplainService {
       if (!goal) return null;
 
       return {
-        title: 'Required monthly contribution',
-        summary: 'What you would need to put aside each month to hit a goal by its date.',
-        formula: 'Required = (target − current) ÷ months remaining',
+        ...BASICS['goal-required'],
+        nextStep: undefined,
+        formula: 'Needed each month = (goal − saved so far) ÷ months left',
         steps: [
-          { label: `${goal.goal.name} target`, value: this.money(goal.goal.targetAmount) },
+          { label: `${goal.goal.name} goal`, value: this.money(goal.goal.targetAmount) },
           { label: 'Saved so far', value: this.money(goal.currentAmount), negative: true },
-          { label: 'Months remaining', value: String(goal.monthsRemaining ?? 0), hint: 'Rounded to the nearest whole month' },
+          { label: 'Months left', value: String(goal.monthsRemaining ?? 0), hint: 'Rounded to the nearest whole month' },
         ],
-        result: { label: 'Required', value: `${this.money(goal.requiredMonthly)} / month` },
-        note: `A goal counts as on track when what you are contributing meets that figure. ${goal.goal.name} is currently ${goal.onTrack ? 'on track' : 'behind'}.`,
+        result: { label: 'Needed', value: `${this.money(goal.requiredMonthly)} / month` },
+        note: `A goal is on track when you’re putting in at least that much. ${goal.goal.name} is currently ${goal.onTrack ? 'on track' : 'behind'}.`,
       };
     },
 
@@ -661,16 +911,15 @@ export class ExplainService {
       if (!expense) return null;
 
       return {
-        title: 'Funding a planned expense',
-        summary: 'What you need to set aside monthly to have the money ready on the day.',
-        formula: 'Required = (cost − already saved) ÷ months until due',
+        ...BASICS['planned-required'],
+        formula: 'Needed each month = (cost − already saved) ÷ months until due',
         steps: [
           { label: `${expense.expense.name} cost`, value: this.money(expense.expense.amount) },
           { label: 'Already saved', value: this.money(expense.expense.savedAmount), negative: true },
           { label: 'Months until due', value: String(Math.max(1, expense.monthsUntil)) },
         ],
-        result: { label: 'Required', value: `${this.money(expense.requiredMonthly)} / month` },
-        note: 'Unfunded planned spending due within three months is also subtracted from your available cash, so it can never look like money you are free to use.',
+        result: { label: 'Needed', value: `${this.money(expense.requiredMonthly)} / month` },
+        note: 'Anything due in the next three months that you haven’t saved for yet is also taken off “Free to spend or invest”, so it never looks like spare money.',
       };
     },
 
@@ -679,20 +928,21 @@ export class ExplainService {
       if (!strategy) return null;
 
       return {
-        title: 'How the status is decided',
-        summary: 'A verdict on whether your plan is working, from your own rules rather than a generic score.',
-        formula: 'Emergency-fund gap ÷ recent savings rate, then checked against your rules and planned spending',
+        ...BASICS['strategy-status'],
+        meaning: strategy.explanation,
+        summary: 'Whether your plan is working, judged against your own checks rather than a generic score.',
+        formula: 'How far from your safety cushion ÷ how much you save each month, then compared with your checks and planned expenses',
         steps: [
-          { label: 'Security floor', value: this.money(strategy.securityFloor) },
-          { label: 'Recent savings rate', value: `${this.money(strategy.recentMonthlySaving)} / month`, hint: 'Average of the last three complete months' },
+          { label: 'Safety cushion', value: this.money(strategy.securityFloor) },
+          { label: 'Saved per month', value: `${this.money(strategy.recentMonthlySaving)} / month`, hint: 'Average of the last three full months' },
           {
-            label: 'Months to target',
-            value: strategy.monthsToSecurity === null ? 'Not at this rate' : strategy.monthsToSecurity === 0 ? 'Complete' : `${strategy.monthsToSecurity}`,
+            label: 'Months until your cushion is full',
+            value: strategy.monthsToSecurity === null ? 'Not at this pace' : strategy.monthsToSecurity === 0 ? 'Already full' : `${strategy.monthsToSecurity}`,
           },
-          { label: 'Rules flagged', value: String(strategy.signals.filter((s) => s.tone === 'warn' || s.tone === 'bad').length) },
+          { label: 'Checks flagged', value: String(strategy.signals.filter((s) => s.tone === 'warn' || s.tone === 'bad').length) },
         ],
         result: { label: 'Status', value: strategy.headline },
-        note: '"Ahead" is reserved for a clean sheet — the fund full, cash still growing and nothing flagged. Any warning holds it at "on track" so the headline never contradicts the detail below it.',
+        note: '“Ahead of plan” only shows when everything is in order: your cushion is full, your savings are still growing and nothing is flagged. Any warning keeps it at “On track”.',
       };
     },
 
@@ -703,18 +953,17 @@ export class ExplainService {
       if (!scenario || !cash || !portfolio) return null;
 
       return {
-        title: 'How the projection is built',
-        summary: 'A month-by-month simulation from today’s position and the assumptions you can see.',
-        formula: 'Each month: apply income, spending, contributions, growth, interest and amortisation — then repeat',
+        ...BASICS.forecast,
+        formula: 'Each month: add income, take off spending, add investing, growth and interest, pay down loans — then repeat',
         steps: [
-          { label: 'Starting cash', value: this.money(cash.liquidTotal) },
-          { label: 'Starting investments', value: this.money(portfolio.totalValue) },
-          { label: 'Investment return', value: `${this.pct(scenario.investmentReturn * 100, 1)} / year`, hint: 'Nominal, compounded monthly' },
-          { label: 'Inflation', value: `${this.pct(scenario.inflation * 100, 1)} / year`, hint: 'Applied to spending each anniversary' },
-          { label: 'Monthly investment', value: `${this.money(scenario.monthlyInvestment)} / month` },
+          { label: 'Cash you have now', value: this.money(cash.liquidTotal) },
+          { label: 'Investments now', value: this.money(portfolio.totalValue) },
+          { label: 'Investment growth', value: `${this.pct(scenario.investmentReturn * 100, 1)} / year`, hint: 'Before rising prices, added a little each month' },
+          { label: 'Rising prices', value: `${this.pct(scenario.inflation * 100, 1)} / year`, hint: 'Spending goes up by this much each year' },
+          { label: 'Invested each month', value: `${this.money(scenario.monthlyInvestment)} / month` },
         ],
-        result: { label: 'Horizon', value: `${scenario.horizonYears} years` },
-        note: 'An estimate, not a promise. Returns are not guaranteed, a single bad year moves a long-horizon number a long way, and figures are nominal — not adjusted for inflation.',
+        result: { label: 'How far ahead', value: `${scenario.horizonYears} years` },
+        note: 'An estimate, not a promise. Returns aren’t guaranteed, and one bad year can move a long-range number a lot. “Show in today’s money” takes rising prices into account.',
       };
     },
 
@@ -729,22 +978,21 @@ export class ExplainService {
       );
 
       return {
-        title: 'Currency conversion',
-        summary: 'How balances held in another currency are brought into your base currency.',
-        formula: 'Converted = amount × stored rate',
+        ...BASICS['currency-conversion'],
+        formula: 'Converted = amount × exchange rate',
         steps: [
           { label: `${foreign.name} balance`, value: this.currency.formatIn(foreign.balance, foreign.currency) },
           {
             label: `${foreign.currency} → ${data.profile.baseCurrency} rate`,
             value: String(rate?.rate ?? 1),
-            hint: rate ? `Recorded ${formatDate(rate.asOf, this.currency.locale())}` : 'No rate stored — converted 1:1',
+            hint: rate ? `As of ${formatDate(rate.asOf, this.currency.locale())}` : 'No rate available — counted 1 to 1',
           },
         ],
         result: {
-          label: 'In base currency',
+          label: `In ${data.profile.baseCurrency}`,
           value: this.money(this.store.convert()(foreign.balance, foreign.currency)),
         },
-        note: 'No rate is hard-coded anywhere. Rates live in the `exchange_rates` table, and any pair Snowball had to fall back to 1:1 on is flagged in Settings.',
+        note: 'Snowball never makes up a rate. If it has no rate for a currency, it counts it 1 to 1 and warns you in Settings.',
       };
     },
   };

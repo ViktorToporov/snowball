@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { CurrencyService } from '../../core/money/currency.service';
 import { AssetKind, LiabilityKind, OtherAsset, Liability } from '../../core/models/domain.models';
@@ -8,6 +9,7 @@ import { FinanceStore } from '../../core/state/finance.store';
 import { RangeKey, Series, applyRange, seriesColor } from '../../shared/charts/chart-utils';
 import { DonutChartComponent } from '../../shared/charts/donut-chart.component';
 import { LineChartComponent } from '../../shared/charts/line-chart.component';
+import { DialogDirective } from '../../shared/ui/dialog.directive';
 import { ExplainComponent } from '../../shared/ui/explain.component';
 import { StatCardComponent } from '../../shared/ui/stat-card.component';
 import {
@@ -22,7 +24,7 @@ const ASSET_KINDS: Array<{ value: AssetKind; label: string }> = [
   { value: 'valuables', label: 'Valuables' },
   { value: 'pension', label: 'Pension' },
   { value: 'business', label: 'Business' },
-  { value: 'receivable', label: 'Money owed to you' },
+  { value: 'receivable', label: 'Money someone owes you' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -41,6 +43,8 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
   imports: [
     CommonModule,
     ReactiveFormsModule,
+    RouterLink,
+    DialogDirective,
     StatCardComponent,
     SectionComponent,
     ExplainComponent,
@@ -55,12 +59,13 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
     <div class="page">
       <header class="page-head">
         <div class="page-head__titles">
-          <p class="eyebrow">Balance sheet</p>
+          <p class="eyebrow">The big picture</p>
           <h1 class="h1">Net worth</h1>
+          <p class="small secondary">Everything you own minus everything you owe.</p>
         </div>
         <div class="page-head__actions">
-          <button type="button" class="btn btn--ghost btn--sm" (click)="openAsset()">Add asset</button>
-          <button type="button" class="btn btn--ghost btn--sm" (click)="openLiability()">Add liability</button>
+          <button type="button" class="btn btn--ghost btn--sm" (click)="openAsset()">Add something you own</button>
+          <button type="button" class="btn btn--ghost btn--sm" (click)="openLiability()">Add a debt</button>
         </div>
       </header>
 
@@ -73,9 +78,9 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
             <p class="eyebrow">Net worth today <sb-explain key="net-worth" /></p>
             <p class="hero__value">{{ money(nw.netWorth) }}</p>
             <p class="hero__equation">
-              {{ money(nw.totalAssets) }} in assets
+              {{ money(nw.totalAssets) }} you own
               <span class="muted">−</span>
-              {{ money(nw.totalLiabilities) }} in liabilities
+              {{ money(nw.totalLiabilities) }} you owe
             </p>
           </div>
           <div class="hero__deltas">
@@ -95,15 +100,15 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
         </section>
 
         <div class="grid grid--stats">
-          <sb-stat-card label="Liquid net worth" explain="liquid-cash" [value]="nw.liquidNetWorth" [caption]="'Cash and investments, less short-term debt'" />
-          <sb-stat-card label="Invested" explain="portfolio-value" [value]="nw.investedNetWorth" [caption]="sharePct(nw.investedNetWorth, nw.totalAssets) + ' of assets'" />
-          <sb-stat-card label="Property equity" explain="property-equity" [value]="nw.propertyEquity" [caption]="propertyCaption()" />
-          <sb-stat-card label="Total liabilities" [value]="nw.totalLiabilities" [invertDelta]="true" [caption]="sharePct(nw.totalLiabilities, nw.totalAssets) + ' of assets'" />
+          <sb-stat-card label="Without your property" [value]="nw.liquidNetWorth" caption="Cash and investments, minus debts other than mortgages" />
+          <sb-stat-card label="Investments" explain="portfolio-value" [value]="nw.investedNetWorth" [caption]="sharePct(nw.investedNetWorth, nw.totalAssets) + ' of what you own'" />
+          <sb-stat-card label="Your share of property" explain="property-equity" [value]="nw.propertyEquity" [caption]="propertyCaption()" />
+          <sb-stat-card label="Everything you owe" [value]="nw.totalLiabilities" [invertDelta]="true" [caption]="sharePct(nw.totalLiabilities, nw.totalAssets) + ' of what you own'" />
         </div>
 
         <!-- --------------------------------------------------------- -->
         <div class="grid grid--wide-left">
-          <sb-section title="Net worth over time" explain="net-worth" subtitle="Assets, liabilities and the resulting net position.">
+          <sb-section title="Net worth over time" explain="net-worth" subtitle="What you own, what you owe, and the difference.">
             <div slot="actions">
               <div class="segmented" role="group" aria-label="Date range">
                 @for (option of ranges; track option) {
@@ -117,58 +122,62 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
             @if (series().length) {
               <sb-line-chart [series]="series()" [height]="290" ariaLabel="Net worth over time" />
             } @else {
-              <sb-empty title="No history yet" text="Snapshots build up as your balances change." />
+              <sb-empty title="No history yet" text="History builds up from your monthly check-ins — one point each month.">
+                <a routerLink="/check-in" class="btn btn--primary btn--sm">Do a check-in</a>
+              </sb-empty>
             }
           </sb-section>
 
-          <sb-section title="Composition" subtitle="Every asset class, at today's values.">
-            <sb-donut-chart [data]="assetMix()" centerLabel="Assets" [stacked]="true" ariaLabel="Assets by class" />
+          <sb-section title="What you own, by type" subtitle="At today's values.">
+            <sb-donut-chart [data]="assetMix()" centerLabel="Assets" [stacked]="true" ariaLabel="What you own, by type" />
           </sb-section>
         </div>
 
         <!-- --------------------------------------------------------- -->
         <div class="grid grid--2">
-          <sb-section title="Assets" subtitle="What you own." [flush]="true">
+          <sb-section title="What you own" subtitle="Your money, investments and things of value." [flush]="true">
             <div class="table-wrap">
-              <table class="table">
+              <table class="table table--stack">
                 <thead>
-                  <tr><th>Item</th><th>Type</th><th class="t-right">Value</th><th></th></tr>
+                  <tr><th>Item</th><th>Type</th><th class="t-right">Value</th><th><span class="sr-only">Actions</span></th></tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td class="table__primary">Cash accounts</td>
-                    <td class="secondary">Liquid</td>
-                    <td class="num">{{ money(nw.cash) }}</td>
+                    <td class="table__primary">Bank accounts and cash</td>
+                    <td class="secondary" data-label="Type">Cash</td>
+                    <td class="num" data-label="Value">{{ money(nw.cash) }}</td>
                     <td></td>
                   </tr>
                   <tr>
-                    <td class="table__primary">Investment portfolio</td>
-                    <td class="secondary">Invested</td>
-                    <td class="num">{{ money(nw.investments) }}</td>
+                    <td class="table__primary">Investments</td>
+                    <td class="secondary" data-label="Type">Funds and shares</td>
+                    <td class="num" data-label="Value">{{ money(nw.investments) }}</td>
                     <td></td>
                   </tr>
                   @for (property of store.properties(); track property.property.id) {
                     <tr>
                       <td class="table__primary">{{ property.property.name }}</td>
-                      <td class="secondary">Property</td>
-                      <td class="num">{{ moneyIn(property.property.estimatedValue, property.property.currency) }}</td>
+                      <td class="secondary" data-label="Type">Property</td>
+                      <td class="num" data-label="Value">{{ moneyIn(property.property.estimatedValue, property.property.currency) }}</td>
                       <td></td>
                     </tr>
                   }
                   @for (asset of store.data()?.otherAssets ?? []; track asset.id) {
                     <tr>
                       <td class="table__primary">{{ asset.name }}</td>
-                      <td class="secondary">{{ assetKindLabel(asset.assetKind) }}</td>
-                      <td class="num">{{ moneyIn(asset.currentValue, asset.currency) }}</td>
+                      <td class="secondary" data-label="Type">{{ assetKindLabel(asset.assetKind) }}</td>
+                      <td class="num" data-label="Value">{{ moneyIn(asset.currentValue, asset.currency) }}</td>
                       <td class="t-right">
-                        <button type="button" class="btn btn--quiet btn--sm" (click)="openAsset(asset)">Edit</button>
+                        <button type="button" class="btn btn--quiet btn--sm" (click)="openAsset(asset)">
+                          Edit<span class="sr-only"> {{ asset.name }}</span>
+                        </button>
                       </td>
                     </tr>
                   }
                 </tbody>
                 <tfoot>
                   <tr class="total-row">
-                    <td colspan="2">Total assets</td>
+                    <td colspan="2">Total you own</td>
                     <td class="num">{{ money(nw.totalAssets) }}</td>
                     <td></td>
                   </tr>
@@ -177,21 +186,21 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
             </div>
           </sb-section>
 
-          <sb-section title="Liabilities" subtitle="What you owe." [flush]="true">
+          <sb-section title="What you owe" subtitle="Mortgages, loans and card balances." [flush]="true">
             <div class="table-wrap">
-              <table class="table">
+              <table class="table table--stack">
                 <thead>
-                  <tr><th>Item</th><th>Type</th><th class="t-right">Balance</th><th></th></tr>
+                  <tr><th>Item</th><th>Type</th><th class="t-right">Still owed</th><th><span class="sr-only">Actions</span></th></tr>
                 </thead>
                 <tbody>
                   @for (property of store.properties(); track property.property.id) {
                     @if (property.property.mortgageBalance > 0) {
                       <tr>
                         <td class="table__primary">{{ property.property.name }} — mortgage</td>
-                        <td class="secondary">
-                          Mortgage · {{ pct(property.property.mortgageInterestRate * 100, 2) }}
+                        <td class="secondary" data-label="Type">
+                          Mortgage · {{ pct(property.property.mortgageInterestRate * 100, 2) }} interest
                         </td>
-                        <td class="num">{{ moneyIn(property.property.mortgageBalance, property.property.currency) }}</td>
+                        <td class="num" data-label="Still owed">{{ moneyIn(property.property.mortgageBalance, property.property.currency) }}</td>
                         <td></td>
                       </tr>
                     }
@@ -199,33 +208,35 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
                   @for (card of creditCards(); track card.id) {
                     <tr>
                       <td class="table__primary">{{ card.name }}</td>
-                      <td class="secondary">Credit card</td>
-                      <td class="num">{{ moneyIn(card.balance, card.currency) }}</td>
+                      <td class="secondary" data-label="Type">Credit card</td>
+                      <td class="num" data-label="Still owed">{{ moneyIn(Math.abs(card.balance), card.currency) }}</td>
                       <td></td>
                     </tr>
                   }
                   @for (liability of store.data()?.liabilities ?? []; track liability.id) {
                     <tr>
                       <td class="table__primary">{{ liability.name }}</td>
-                      <td class="secondary">
+                      <td class="secondary" data-label="Type">
                         {{ liabilityKindLabel(liability.liabilityKind) }}
                         @if (liability.interestRate > 0) {
-                          · {{ pct(liability.interestRate * 100, 2) }}
+                          · {{ pct(liability.interestRate * 100, 2) }} interest
                         }
                       </td>
-                      <td class="num">{{ moneyIn(liability.balance, liability.currency) }}</td>
+                      <td class="num" data-label="Still owed">{{ moneyIn(liability.balance, liability.currency) }}</td>
                       <td class="t-right">
-                        <button type="button" class="btn btn--quiet btn--sm" (click)="openLiability(liability)">Edit</button>
+                        <button type="button" class="btn btn--quiet btn--sm" (click)="openLiability(liability)">
+                          Edit<span class="sr-only"> {{ liability.name }}</span>
+                        </button>
                       </td>
                     </tr>
                   }
                   @if (!hasMortgage() && !creditCards().length && !(store.data()?.liabilities ?? []).length) {
-                    <tr><td colspan="4"><p class="small muted" style="padding:8px 0">No liabilities recorded.</p></td></tr>
+                    <tr><td colspan="4"><p class="small muted" style="padding:8px 0">You don't owe anything — nothing to show here.</p></td></tr>
                   }
                 </tbody>
                 <tfoot>
                   <tr class="total-row">
-                    <td colspan="2">Total liabilities</td>
+                    <td colspan="2">Total you owe</td>
                     <td class="num">{{ money(nw.totalLiabilities) }}</td>
                     <td></td>
                   </tr>
@@ -238,7 +249,7 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
         <div class="estimate-note">
           <span>
             <strong>Estimates included.</strong> Property and vehicle values are figures you entered, not market
-            valuations. Update them on this page whenever you get a better number.
+            valuations. Update them whenever you get a better number — your monthly check-in asks for them.
           </span>
         </div>
       }
@@ -246,8 +257,11 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
       <!-- ============================================================ -->
       @if (assetOpen()) {
         <div class="scrim" (click)="assetOpen.set(false)" role="presentation">
-          <div class="dialog" role="dialog" aria-modal="true" aria-label="Asset" (click)="$event.stopPropagation()">
-            <h2 class="h2">{{ editingAssetId() ? 'Edit asset' : 'Add asset' }}</h2>
+          <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="as-dialog-title" sbDialog (dismiss)="assetOpen.set(false)" (click)="$event.stopPropagation()">
+            <h2 class="h2" id="as-dialog-title">{{ editingAssetId() ? 'Edit something you own' : 'Add something you own' }}</h2>
+            <p class="small secondary">
+              For things of value that aren't a bank account, investment or property — a car, a pension, a business.
+            </p>
 
             <form [formGroup]="assetForm" (ngSubmit)="saveAsset()" class="col" style="gap:12px">
               <div class="field">
@@ -257,7 +271,7 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="as-kind">Type</label>
+                  <label class="field__label" for="as-kind">What it is</label>
                   <select id="as-kind" class="select" formControlName="assetKind">
                     @for (option of assetKinds; track option.value) {
                       <option [value]="option.value">{{ option.label }}</option>
@@ -265,20 +279,20 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
                   </select>
                 </div>
                 <div class="field">
-                  <label class="field__label" for="as-value">Current value</label>
+                  <label class="field__label" for="as-value">What it's worth now</label>
                   <input id="as-value" class="input input--num" type="number" step="0.01" formControlName="currentValue" />
                 </div>
               </div>
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="as-purchase">Purchase value</label>
+                  <label class="field__label" for="as-purchase">What you paid (optional)</label>
                   <input id="as-purchase" class="input input--num" type="number" step="0.01" formControlName="purchaseValue" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="as-dep">Annual depreciation (%)</label>
+                  <label class="field__label" for="as-dep">Loses value each year (%)</label>
                   <input id="as-dep" class="input input--num" type="number" step="0.1" formControlName="depreciationPercent" />
-                  <span class="field__hint">Applied in forecasts.</span>
+                  <span class="field__hint">Used for future estimates. Leave at 0 if it keeps its value.</span>
                 </div>
               </div>
 
@@ -288,7 +302,7 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
                 } @else { <span></span> }
                 <div class="row" style="gap:8px">
                   <button type="button" class="btn btn--ghost" (click)="assetOpen.set(false)">Cancel</button>
-                  <button type="submit" class="btn btn--primary" [disabled]="assetForm.invalid">Save</button>
+                  <button type="submit" class="btn btn--primary" [disabled]="assetForm.invalid || store.saving()">Save</button>
                 </div>
               </div>
             </form>
@@ -298,8 +312,12 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
 
       @if (liabilityOpen()) {
         <div class="scrim" (click)="liabilityOpen.set(false)" role="presentation">
-          <div class="dialog" role="dialog" aria-modal="true" aria-label="Liability" (click)="$event.stopPropagation()">
-            <h2 class="h2">{{ editingLiabilityId() ? 'Edit liability' : 'Add liability' }}</h2>
+          <div class="dialog dialog--wide" role="dialog" aria-modal="true" aria-labelledby="li-dialog-title" sbDialog (dismiss)="liabilityOpen.set(false)" (click)="$event.stopPropagation()">
+            <h2 class="h2" id="li-dialog-title">{{ editingLiabilityId() ? 'Edit debt' : 'Add a debt' }}</h2>
+            <p class="small secondary">
+              Loans and other debts. Mortgages on a property you own go on the Property page; credit cards are
+              picked up from your accounts.
+            </p>
 
             <form [formGroup]="liabilityForm" (ngSubmit)="saveLiability()" class="col" style="gap:12px">
               <div class="field">
@@ -309,7 +327,7 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="li-kind">Type</label>
+                  <label class="field__label" for="li-kind">What kind</label>
                   <select id="li-kind" class="select" formControlName="liabilityKind">
                     @for (option of liabilityKinds; track option.value) {
                       <option [value]="option.value">{{ option.label }}</option>
@@ -317,14 +335,14 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
                   </select>
                 </div>
                 <div class="field">
-                  <label class="field__label" for="li-balance">Balance</label>
+                  <label class="field__label" for="li-balance">Still owed</label>
                   <input id="li-balance" class="input input--num" type="number" step="0.01" formControlName="balance" />
                 </div>
               </div>
 
               <div class="grid grid--3" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="li-rate">Interest (%)</label>
+                  <label class="field__label" for="li-rate">Interest rate (% per year)</label>
                   <input id="li-rate" class="input input--num" type="number" step="0.01" formControlName="interestPercent" />
                 </div>
                 <div class="field">
@@ -343,7 +361,7 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
                 } @else { <span></span> }
                 <div class="row" style="gap:8px">
                   <button type="button" class="btn btn--ghost" (click)="liabilityOpen.set(false)">Cancel</button>
-                  <button type="submit" class="btn btn--primary" [disabled]="liabilityForm.invalid">Save</button>
+                  <button type="submit" class="btn btn--primary" [disabled]="liabilityForm.invalid || store.saving()">Save</button>
                 </div>
               </div>
             </form>
@@ -360,7 +378,7 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
       />
       <sb-confirm
         [open]="confirmLiabilityDelete()"
-        title="Delete this liability?"
+        title="Delete this debt?"
         message="It will be removed from your net worth."
         (confirmed)="deleteLiability()"
         (cancelled)="confirmLiabilityDelete.set(false)"
@@ -380,6 +398,9 @@ export class NetWorthComponent {
   readonly range = signal<RangeKey>('1Y');
 
   readonly netWorth = this.store.netWorth;
+  readonly Math = Math;
+  /** Editing keeps a record's own currency; new records use the base currency. */
+  private editingCurrency: string | null = null;
 
   readonly assetOpen = signal(false);
   readonly liabilityOpen = signal(false);
@@ -438,13 +459,13 @@ export class NetWorthComponent {
       },
       {
         key: 'assets',
-        name: 'Assets',
+        name: 'What you own',
         color: seriesColor(2),
         points: ranged.map((p) => ({ label: p.label, value: p.assets })),
       },
       {
         key: 'liabilities',
-        name: 'Liabilities',
+        name: 'What you owe',
         color: seriesColor(1),
         points: ranged.map((p) => ({ label: p.label, value: p.liabilities })),
       },
@@ -462,13 +483,18 @@ export class NetWorthComponent {
   readonly propertyCaption = computed(() => {
     const properties = this.store.properties();
     if (!properties.length) return 'No property recorded';
-    return `${Math.round(properties[0].loanToValue)}% loan-to-value`;
+    const convert = this.store.convert();
+    const value = properties.reduce((sum, m) => sum + convert(m.property.estimatedValue, m.property.currency), 0);
+    const owed = properties.reduce((sum, m) => sum + convert(m.property.mortgageBalance, m.property.currency), 0);
+    if (owed <= 0) return 'Nothing owed on it';
+    return `${value > 0 ? Math.round((owed / value) * 100) : 0}% of the value still owed`;
   });
 
   /* -- actions -------------------------------------------------------- */
 
   openAsset(asset?: OtherAsset): void {
     this.editingAssetId.set(asset?.id ?? null);
+    this.editingCurrency = asset?.currency ?? null;
     this.assetForm.reset({
       name: asset?.name ?? '',
       assetKind: asset?.assetKind ?? 'other',
@@ -486,7 +512,7 @@ export class NetWorthComponent {
       name: raw.name.trim(),
       assetKind: raw.assetKind,
       currentValue: Number(raw.currentValue),
-      currency: this.currency.baseCurrency(),
+      currency: this.editingCurrency ?? this.currency.baseCurrency(),
       purchaseValue: raw.purchaseValue === null ? null : Number(raw.purchaseValue),
       annualDepreciation: Number(raw.depreciationPercent) / 100,
       isLiquid: false,
@@ -508,6 +534,7 @@ export class NetWorthComponent {
 
   openLiability(liability?: Liability): void {
     this.editingLiabilityId.set(liability?.id ?? null);
+    this.editingCurrency = liability?.currency ?? null;
     this.liabilityForm.reset({
       name: liability?.name ?? '',
       liabilityKind: liability?.liabilityKind ?? 'personal_loan',
@@ -526,7 +553,7 @@ export class NetWorthComponent {
       name: raw.name.trim(),
       liabilityKind: raw.liabilityKind,
       balance: Number(raw.balance),
-      currency: this.currency.baseCurrency(),
+      currency: this.editingCurrency ?? this.currency.baseCurrency(),
       interestRate: Number(raw.interestPercent) / 100,
       monthlyPayment: Number(raw.monthlyPayment),
       remainingMonths: Number(raw.remainingMonths),
@@ -560,12 +587,13 @@ export class NetWorthComponent {
     return whole > 0 ? this.currency.percent((part / whole) * 100, 0) : '—';
   }
 
+  /** Whole units throughout — this page is about the big picture. */
   money(value: number | null, signed = false): string {
-    return this.currency.format(value, { signed, decimals: Math.abs(value ?? 0) >= 10000 ? 0 : undefined });
+    return this.currency.format(value, { signed, decimals: 0 });
   }
 
   moneyIn(value: number, currencyCode: string): string {
-    return this.currency.formatIn(value, currencyCode, { decimals: Math.abs(value) >= 10000 ? 0 : undefined });
+    return this.currency.formatIn(value, currencyCode, { decimals: 0 });
   }
 
   pct(value: number, decimals = 1): string {

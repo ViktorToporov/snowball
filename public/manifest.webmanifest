@@ -1,0 +1,13 @@
+{
+  "name": "Snowball",
+  "short_name": "Snowball",
+  "description": "Keep the dough rolling: cash, investments, property, goals and forecasts in one place.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f5f7",
+  "theme_color": "#f4f5f7",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -17,6 +17,7 @@ Built with **Angular 20** (standalone components, signals, lazy routes) and
 
 - [Quick start](#quick-start)
 - [Supabase setup](#supabase-setup)
+- [Deploying](#deploying)
 - [What's in the box](#whats-in-the-box)
 - [Architecture](#architecture)
 - [Financial model](#financial-model)
@@ -68,7 +69,8 @@ persona in SQL, so the app tells one story with or without a backend.
 
 ### 1. Create a Supabase project
 
-<https://supabase.com/dashboard> → **New project**. Note the project reference.
+<https://supabase.com/dashboard> → **New project**. Pick a region close to
+your users. Note the project reference.
 
 ### 2. Run the schema
 
@@ -78,7 +80,10 @@ Open **SQL Editor → New query**, paste the entire contents of
 This creates every table, enum, index, constraint, trigger, calculation
 function, view and Row Level Security policy. It is safe to re-run.
 
-### 3. Run the seed (optional but recommended)
+Check it worked: **Table Editor** should list 25 tables, each marked as
+having Row Level Security enabled.
+
+### 3. Seed demo data (development projects only)
 
 Paste [`supabase/seed.sql`](supabase/seed.sql) into a new query and run it.
 
@@ -91,7 +96,8 @@ in-browser demo uses:
 | **Password** | `snowball-demo` |
 
 The seed is idempotent — re-running it wipes and rebuilds that user's data and
-never touches anyone else's. **Do not run it against a production project.**
+never touches anyone else's. **Never run it against your production project**:
+it creates an account with a publicly known password.
 
 > If your project blocks direct `auth.users` inserts, create the user through
 > **Authentication → Users → Add user** first (same email), then run the seed —
@@ -99,35 +105,51 @@ never touches anyone else's. **Do not run it against a production project.**
 
 ### 4. Configure authentication
 
-**Authentication → Providers → Email**: enable it.
+**Authentication → Sign In / Providers → Email**: enable it.
 
-For local development, turn **"Confirm email"** off so sign-up gives you a
-session immediately. With it on, Snowball tells the user to check their inbox
-and returns them to the sign-in screen.
+- **Development:** turn **"Confirm email"** off so sign-up gives you a session
+  immediately.
+- **Production:** leave it on, and set up **custom SMTP** (Authentication →
+  Emails → SMTP settings) with a provider such as Resend, Postmark or Amazon SES.
+  Supabase's built-in mailer is meant for testing only; it is heavily rate
+  limited and may only deliver to your own team's addresses
+  [check the current limits in the Supabase docs].
 
-Under **Authentication → URL Configuration**, add `http://localhost:4200` to the
-redirect allow-list so password-reset links come back to the app.
+**Authentication → URL Configuration:**
+
+| Setting | Value |
+|---|---|
+| **Site URL** | `https://your-domain.com` (or `http://localhost:4200` while developing) |
+| **Redirect URLs** | `http://localhost:4200/**` and `https://your-domain.com/**` |
+
+Confirmation emails send people to `/dashboard`, and password-reset emails
+send them to `/auth/reset-password`, where they choose a new password. Both
+must be on an allowed URL or Supabase falls back to the Site URL.
 
 ### 5. Add your Supabase URL and publishable key
 
-```bash
-cp src/environments/environment.example.ts src/environments/environment.ts
-```
+From **Project Settings → API**, copy the **Project URL** and the
+**anon / publishable** key into both environment files:
 
-Then fill in the two values from **Project Settings → API**:
+| File | Used by |
+|---|---|
+| `src/environments/environment.ts` | `npm start` (development) |
+| `src/environments/environment.prod.ts` | `npm run build` (production) |
 
 ```ts
-export const environment = {
-  production: false,
-  supabaseUrl: 'https://YOUR-PROJECT-REF.supabase.co',
-  supabaseAnonKey: 'YOUR-PUBLISHABLE-ANON-KEY',
-  forceDemoMode: false,
-  // …
-};
+supabaseUrl: 'https://YOUR-PROJECT-REF.supabase.co',
+supabaseAnonKey: 'YOUR-PUBLISHABLE-ANON-KEY',
 ```
 
-Use the **anon / publishable** key. The service-role key must never appear in a
-browser application — see [Security notes](#security-notes).
+The publishable key is designed to be public; Row Level Security is what
+protects the data. **Never** use the service-role key here. See
+[Security notes](#security-notes).
+
+A development build with blank values runs the in-browser demo. A
+**production build with blank values refuses to start** (it shows a "not
+configured" page). This stops a deploy from quietly serving demo mode, where
+any email and password "signs in". To host the demo on purpose, set
+`forceDemoMode: true` in `environment.prod.ts`.
 
 ### 6. Run the application
 
@@ -136,9 +158,80 @@ npm start
 ```
 
 Sign in with the seeded demo user, or create your own account. On sign-up the
-`handle_new_user` trigger automatically provisions a profile, the three default
-financial phases, the Phase 1 strategy rules, priorities and a base forecast
-scenario — so a brand-new account is immediately usable rather than empty.
+`handle_new_user` trigger provisions a profile, the default plan stages and
+checks, priorities and a base forecast scenario.
+
+A new account then opens on a **setup checklist**: add accounts → add income →
+add fixed bills → set your safety cushion → do your first monthly check-in.
+
+---
+
+## Deploying
+
+Snowball is a static single-page app: `npm run build` writes plain files to
+`dist/snowball/browser/`, and any static host can serve them. Supabase is
+only the backend; it does not host the site.
+
+### Before the first deploy
+
+1. Fill in `src/environments/environment.prod.ts` (step 5 above).
+2. Put the project in a Git repository and push it to GitHub, GitLab or
+   Bitbucket. Hosts deploy on every push.
+3. Run `npm run build` locally once to make sure it succeeds.
+
+### Netlify
+
+[`netlify.toml`](netlify.toml) is already set up (build command, output folder, Node 22,
+single-page routing and security headers).
+
+1. **Add new site → Import an existing project** → pick the repository.
+2. Accept the detected settings and deploy.
+3. **Domain management → Add a domain** → follow the DNS instructions.
+
+### Vercel
+
+[`vercel.json`](vercel.json) is already set up.
+
+1. **Add New → Project** → import the repository (framework preset: Angular).
+2. Deploy.
+3. **Settings → Domains** → add your domain and follow the DNS instructions.
+
+### Cloudflare Pages
+
+1. **Workers & Pages → Create → Pages → Connect to Git**.
+2. Build command `npm run build`, output directory `dist/snowball/browser`.
+3. **Custom domains → Set up a domain**.
+
+Cloudflare Pages serves `index.html` for unknown paths automatically, so no
+routing file is needed.
+
+### After the domain is live
+
+1. In Supabase, set **Site URL** to `https://your-domain.com` and add
+   `https://your-domain.com/**` to **Redirect URLs** (step 4).
+2. Sign up with a real address, confirm the email, then sign out and use
+   **Forgot your password?** to check that the reset email arrives and
+   `/auth/reset-password` works.
+3. Refresh the browser on a deep link such as `/goals`. It should load
+   the page, not a 404.
+
+### Production checklist
+
+- [ ] `schema.sql` run on the production project; `seed.sql` **not** run
+- [ ] `environment.prod.ts` has the production URL + publishable key
+- [ ] Email confirmation on, custom SMTP configured
+- [ ] Site URL and Redirect URLs point at the real domain
+- [ ] Sign-up, sign-in, password reset and a deep-link refresh all tested
+- [ ] Optional: **Project Settings → Add-ons → Point in Time Recovery** or
+      regular backups, since this is financial data
+
+### Exchange rates
+
+`schema.sql` seeds EUR ⇄ USD / GBP / CHF rates once, on install. Nothing
+refreshes them automatically. Settings only offers base currencies that have
+rates. To keep rates current, update the `exchange_rates` table with the
+service role, for example from a scheduled Supabase Edge Function that calls an
+FX API.
 
 ---
 
@@ -196,7 +289,7 @@ src/app/
     charts/          Hand-built SVG chart kit
     ui/              Cards, meters, badges, dialogs, states, logo
   features/
-    dashboard/ cash-flow/ transactions/ investments/ net-worth/
+    dashboard/ check-in/ cash-flow/ investments/ net-worth/
     property/ goals/ strategy/ forecasts/ settings/ auth/
   layout/            App shell: sidebar, topbar, mobile drawer
 ```
@@ -367,15 +460,23 @@ floor).
 
 ## Security notes
 
-- **Only the publishable (anon) key belongs in `environment.ts`.** The
+- **Only the publishable (anon) key belongs in the environment files.** The
   service-role key bypasses Row Level Security entirely; putting it in a browser
   app hands every user's data to anyone who opens DevTools. Snowball never reads
   it.
-- **RLS is on, forced, for every user-owned table**, with a policy per command
-  keyed on `auth.uid() = user_id`. `profiles` keys on `id`; `categories` allows
-  reading shared system rows but only writing your own; `exchange_rates` is
-  read-only reference data that only the service role can refresh. Nothing is
-  publicly readable — the schema explicitly revokes all grants from `anon`.
+- **RLS is on for every table**, with a policy per command keyed on
+  `auth.uid() = user_id`. `profiles` keys on `id`; `categories` allows reading
+  shared system rows but only writing your own; `exchange_rates` is read-only
+  reference data that only the service role can refresh. Nothing is publicly
+  readable: the schema revokes table access and function execution from
+  `anon`. RLS is deliberately not *forced*: the sign-up trigger runs as the
+  table owner and must be able to create the new user's rows before they have
+  a session.
+- **`load()` reads whole tables.** Supabase's API returns at most 1,000 rows
+  per request by default. That is years of monthly snapshots for a typical
+  household, but a very active investor could eventually hit it on
+  `investment_transactions` (raise **Project Settings → API → Max rows** or add
+  paging).
 - **`supabase/seed.sql` is development data.** It creates a user with a known
   password. Never run it against production.
 

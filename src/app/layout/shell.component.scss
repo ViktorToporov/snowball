@@ -109,6 +109,27 @@
   color: var(--ink-muted);
 }
 
+/* Monthly check-in — sidebar/drawer and top bar */
+.checkin-link {
+  position: relative;
+  gap: 8px;
+}
+.sidebar__nav > .checkin-link {
+  min-height: 40px;
+}
+.checkin-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 30%, transparent);
+}
+.show-sm { display: none; }
+@media (max-width: 700px) {
+  .show-sm { display: inline; }
+}
+
 .demo-note {
   font-size: 11px;
   line-height: 1.45;

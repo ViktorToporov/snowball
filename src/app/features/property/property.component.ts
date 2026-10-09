@@ -1,17 +1,21 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { CurrencyService } from '../../core/money/currency.service';
 import { formatRelative } from '../../core/money/format';
 import { Property, RentalStatus } from '../../core/models/domain.models';
 import { PropertyMetrics, WaterfallStep, monthlyRentPaid, propertyPortfolio } from '../../core/engine/metrics';
 import { FinanceStore } from '../../core/state/finance.store';
+import { ViewPrefsService } from '../../core/ui/view-prefs.service';
 import { Series, seriesColor } from '../../shared/charts/chart-utils';
 import { LineChartComponent } from '../../shared/charts/line-chart.component';
+import { DialogDirective } from '../../shared/ui/dialog.directive';
 import { ExplainComponent } from '../../shared/ui/explain.component';
 import { StatCardComponent } from '../../shared/ui/stat-card.component';
 import {
+  AdvancedToggleComponent,
   ConfirmDialogComponent,
   EmptyStateComponent,
   MeterComponent,
@@ -20,10 +24,10 @@ import {
 } from '../../shared/ui/ui-kit';
 
 const STATUSES: Array<{ value: RentalStatus; label: string }> = [
-  { value: 'owner_occupied', label: 'Owner occupied' },
-  { value: 'rented', label: 'Rented' },
-  { value: 'listed', label: 'Listed / seeking tenant' },
-  { value: 'vacant', label: 'Vacant' },
+  { value: 'owner_occupied', label: 'I live here' },
+  { value: 'rented', label: 'Rented out' },
+  { value: 'listed', label: 'Looking for a tenant' },
+  { value: 'vacant', label: 'Empty' },
 ];
 
 @Component({
@@ -32,6 +36,7 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
   imports: [
     CommonModule,
     ReactiveFormsModule,
+    RouterLink,
     StatCardComponent,
     SectionComponent,
     MeterComponent,
@@ -39,6 +44,8 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
     SkeletonComponent,
     EmptyStateComponent,
     ConfirmDialogComponent,
+    AdvancedToggleComponent,
+    DialogDirective,
     LineChartComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,10 +53,13 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
     <div class="page">
       <header class="page-head">
         <div class="page-head__titles">
-          <p class="eyebrow">Real assets</p>
+          <p class="eyebrow">Homes you own</p>
           <h1 class="h1">Property</h1>
         </div>
         <div class="page-head__actions">
+          @if (store.properties().length) {
+            <sb-advanced-toggle />
+          }
           <button type="button" class="btn btn--primary btn--sm" (click)="openEditor()">Add property</button>
         </div>
       </header>
@@ -57,11 +67,33 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
       @if (store.isLoading()) {
         <div class="card card--pad"><sb-skeleton [count]="6" /></div>
       } @else if (!store.properties().length) {
-        <div class="card">
-          <sb-empty title="No property recorded" text="Add a property to track equity, cash flow and rental yield.">
-            <button type="button" class="btn btn--primary btn--sm" (click)="openEditor()">Add property</button>
-          </sb-empty>
-        </div>
+        <!-- ========================================================
+             Nothing owned — most people rent, and that is fine
+             ======================================================== -->
+        <section class="housing housing--single">
+          <div class="housing__side">
+            <p class="eyebrow">Where you live</p>
+            @if (rentPaid() > 0) {
+              <p class="housing__headline">Renting</p>
+              <p class="housing__amount">{{ money(rentPaid()) }}<span class="housing__per">/month in rent</span></p>
+              <p class="housing__note">
+                Renting is completely normal. Your rent is counted as one of your fixed monthly bills, so it is
+                already part of your plan. This page is for homes you <strong>own</strong> — the one you live in, or
+                one you rent out to someone else.
+              </p>
+            } @else {
+              <p class="housing__headline">Nothing recorded yet</p>
+              <p class="housing__note">
+                This page is for homes you <strong>own</strong> — the one you live in, or one you rent out. If you rent
+                where you live, add your rent as a fixed monthly bill in
+                <a routerLink="/cash-flow">Money &amp; bills</a> instead; there's nothing to add here.
+              </p>
+            }
+            <div class="row" style="margin-top:12px">
+              <button type="button" class="btn btn--ghost btn--sm" (click)="openEditor()">Add a property you own</button>
+            </div>
+          </div>
+        </section>
       } @else {
         <!-- ========================================================
              Where the household stands on housing, before any detail
@@ -70,19 +102,26 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
           <div class="housing__side">
             <p class="eyebrow">Where you live</p>
             @if (portfolio().allInvestment) {
-              <p class="housing__headline">Renting</p>
-              <p class="housing__amount">{{ money(rentPaid()) }}<span class="housing__per">/month</span></p>
-              <p class="housing__note">
-                You rent your home — it is not an asset on your balance sheet, and the rent is an
-                essential expense like any other. Everything below is property you
-                <strong>own as an investment</strong>.
-              </p>
+              @if (rentPaid() > 0) {
+                <p class="housing__headline">Renting</p>
+                <p class="housing__amount">{{ money(rentPaid()) }}<span class="housing__per">/month in rent</span></p>
+                <p class="housing__note">
+                  You rent your home — that's normal, and the rent is counted as one of your fixed monthly bills.
+                  Everything below is property you <strong>own and rent out</strong>.
+                </p>
+              } @else {
+                <p class="housing__headline">Not recorded</p>
+                <p class="housing__note">
+                  If you rent where you live, add the rent as a fixed monthly bill in
+                  <a routerLink="/cash-flow">Money &amp; bills</a>. Everything below is property you own as an investment.
+                </p>
+              }
             } @else {
               <p class="housing__headline">You own your home</p>
-              <p class="housing__amount">{{ money(homeCost()) }}<span class="housing__per">/month</span></p>
+              <p class="housing__amount">{{ money(homeCost()) }}<span class="housing__per">/month to live there</span></p>
               <p class="housing__note">
-                Mortgage plus running costs on the home you live in. It appears on your balance sheet, but it
-                produces no income.
+                Mortgage plus running costs on the home you live in. It counts towards what you own, but it doesn't
+                bring in any money.
               </p>
             }
           </div>
@@ -93,16 +132,18 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
             <p class="eyebrow">
               {{ portfolio().count }} propert{{ portfolio().count === 1 ? 'y' : 'ies' }} owned
               @if (portfolio().letCount) {
-                · {{ portfolio().letCount }} let
+                · {{ portfolio().letCount }} rented out
               }
             </p>
-            <p class="housing__amount">{{ money(portfolio().totalEquity) }}<span class="housing__per"> equity</span></p>
+            <p class="housing__amount">{{ money(portfolio().totalEquity) }}<span class="housing__per"> is your share</span></p>
             <dl class="housing__facts">
               <div><dt>Value</dt><dd>{{ money(portfolio().totalValue) }}</dd></div>
-              <div><dt>Mortgage debt</dt><dd>{{ money(portfolio().totalDebt) }}</dd></div>
-              <div><dt>Loan-to-value</dt><dd>{{ pct(portfolio().loanToValue, 0) }}</dd></div>
               <div>
-                <dt>Net cash flow</dt>
+                <dt>Still owed</dt>
+                <dd>{{ money(portfolio().totalDebt) }} <span class="muted">({{ pct(portfolio().loanToValue, 0) }} of value)</span></dd>
+              </div>
+              <div>
+                <dt>Monthly cash flow</dt>
                 <dd [class.pos]="portfolio().monthlyCashFlow > 0" [class.neg]="portfolio().monthlyCashFlow < 0">
                   {{ money(portfolio().monthlyCashFlow, true) }}/mo
                 </dd>
@@ -115,10 +156,9 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
           <div class="estimate-note">
             <span>
               <strong>Two different rents, kept apart.</strong>
-              You <strong>pay</strong> {{ money(rentPaid()) }}/month to live somewhere — counted as an essential
-              expense. You <strong>receive</strong> {{ money(rentReceived()) }}/month from tenants — routed
-              through the waterfall below and ring-fenced in the Property Reserve, never treated as
-              lifestyle income.
+              You <strong>pay</strong> {{ money(rentPaid()) }}/month to live somewhere — counted as a fixed monthly
+              bill. You <strong>receive</strong> {{ money(rentReceived()) }}/month from tenants — that pays the
+              property's own costs first, and anything left is kept separate in its repair fund, not spent.
             </span>
           </div>
         }
@@ -133,26 +173,27 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
                 </span>
                 <span class="usage-tag">{{ usageLabel(metrics) }}</span>
               </div>
-              <button type="button" class="btn btn--ghost btn--sm" (click)="openEditor(metrics.property)">Edit</button>
+              <button type="button" class="btn btn--ghost btn--sm" (click)="openEditor(metrics.property)">
+                Edit<span class="sr-only"> {{ metrics.property.name }}</span>
+              </button>
             </div>
 
             <div class="grid grid--stats">
               <sb-stat-card label="Estimated value" [value]="convert(metrics.property.estimatedValue, metrics.property.currency)"
                             [caption]="appreciationCaption(metrics.appreciationSincePurchase)" />
-              <sb-stat-card label="Equity" explain="property-equity" [value]="metrics.equity" [accent]="true"
-                            [caption]="pct(metrics.loanToValue, 0) + ' loan-to-value'" />
-              <sb-stat-card label="Mortgage balance" explain="loan-to-value" [value]="convert(metrics.property.mortgageBalance, metrics.property.currency)"
+              <sb-stat-card label="Still owed" explain="loan-to-value" [value]="convert(metrics.property.mortgageBalance, metrics.property.currency)"
                             [invertDelta]="true"
-                            [caption]="pct(metrics.property.mortgageInterestRate * 100, 2) + ' · ' + metrics.property.remainingMonths + ' months left'" />
+                            [caption]="owedCaption(metrics)" />
+              <sb-stat-card label="Your share" explain="property-equity" [value]="metrics.equity" [accent]="true"
+                            caption="What it's worth minus what's still owed" />
               @if (isHome(metrics.property)) {
-                <sb-stat-card label="Monthly housing cost"
-                              [value]="-(convert(metrics.property.monthlyPayment, metrics.property.currency)
-                                        + convert(metrics.property.monthlyPropertyExpenses, metrics.property.currency))"
-                              [invertDelta]="true"
-                              caption="Mortgage plus running costs — paid from income, not rent" />
+                <sb-stat-card label="Costs you each month"
+                              [value]="convert(metrics.property.monthlyPayment, metrics.property.currency)
+                                        + convert(metrics.property.monthlyPropertyExpenses, metrics.property.currency)"
+                              caption="Mortgage plus running costs, paid from your income" />
               } @else {
                 <sb-stat-card label="Monthly cash flow" explain="property-cash-flow" [value]="metrics.monthlyCashFlow"
-                              [caption]="metrics.property.monthlyRent > 0 ? pct(metrics.netYield, 2) + ' net yield' : 'No rental income yet'" />
+                              [caption]="cashFlowCaption(metrics)" />
               }
             </div>
 
@@ -167,7 +208,7 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
                   @for (step of metrics.waterfall; track step.label; let last = $last) {
                     <li class="waterfall__step" [class]="'waterfall__step waterfall__step--' + step.kind">
                       <div class="waterfall__meta">
-                        <span class="waterfall__label">{{ step.label }}</span>
+                        <span class="waterfall__label">{{ plain(step.label) }}</span>
                         <span class="waterfall__amount num" [class.pos]="step.amount > 0" [class.neg]="step.amount < 0">
                           {{ money(step.amount, true) }}
                         </span>
@@ -180,10 +221,10 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
                       <div class="waterfall__foot">
                         <span class="waterfall__note">
                           @if (step.split) {
-                            {{ money(step.split.interest) }} interest ·
-                            {{ money(step.split.principal) }} off what you owe
+                            {{ money(step.split.interest) }} interest to the bank ·
+                            {{ money(step.split.principal) }} paid off the loan
                           } @else if (step.note) {
-                            {{ step.note }}
+                            {{ plain(step.note) }}
                           }
                         </span>
                         @if (!last && metrics.usage === 'let') {
@@ -197,9 +238,9 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
                 @if (metrics.property.monthlyRent <= 0 && !isHome(metrics.property)) {
                   <div class="estimate-note" style="margin-top:16px">
                     <span>
-                      <strong>Not yet producing rent.</strong>
+                      <strong>No rent coming in yet.</strong>
                       The {{ money(convert(metrics.property.monthlyPayment, metrics.property.currency)) }} mortgage is
-                      currently paid from salary.
+                      currently paid from your own income.
                       @if (metrics.property.expectedRentStart) {
                         Rent is expected {{ relative(metrics.property.expectedRentStart) }}.
                       }
@@ -210,51 +251,66 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
                 <div class="divider" style="margin:18px 0"></div>
 
                 <dl class="mini-facts mini-facts--4">
-                  <div><dt>Monthly rent</dt><dd>{{ money(convert(metrics.property.monthlyRent, metrics.property.currency)) }}</dd></div>
+                  @if (!isHome(metrics.property)) {
+                    <div><dt>Monthly rent</dt><dd>{{ money(convert(metrics.property.monthlyRent, metrics.property.currency)) }}</dd></div>
+                  }
                   <div><dt>Running costs</dt><dd>{{ money(convert(metrics.property.monthlyPropertyExpenses, metrics.property.currency)) }}</dd></div>
                   <div>
-                    <dt>Gross yield <sb-explain key="rental-yield" /></dt>
-                    <dd>{{ pct(metrics.grossYield, 2) }}</dd>
+                    <dt>Interest to the bank <sb-explain key="mortgage-split" /></dt>
+                    <dd>{{ money(metrics.monthlyInterest) }}<span class="muted">/mo</span></dd>
                   </div>
-                  <div><dt>Annual cash flow</dt><dd>{{ money(metrics.annualCashFlow) }}</dd></div>
-                  <div>
-                    <dt>Interest this month <sb-explain key="mortgage-split" /></dt>
-                    <dd>{{ money(metrics.monthlyInterest) }}</dd>
-                  </div>
-                  <div><dt>Principal this month</dt><dd>{{ money(metrics.monthlyPrincipal) }}</dd></div>
-                  <div><dt>Equity in 5 years</dt><dd>{{ money(metrics.equityIn(60)) }}</dd></div>
-                  <div><dt>Equity in 10 years</dt><dd>{{ money(metrics.equityIn(120)) }}</dd></div>
+                  <div><dt>Paid off the loan</dt><dd>{{ money(metrics.monthlyPrincipal) }}<span class="muted">/mo</span></dd></div>
+                  @if (!isHome(metrics.property)) {
+                    <div><dt>Cash flow per year</dt><dd>{{ money(metrics.annualCashFlow, true) }}</dd></div>
+                  }
+                  @if (prefs.advanced()) {
+                    @if (!isHome(metrics.property)) {
+                      <div>
+                        <dt>Rent as % of value (before costs) <sb-explain key="rental-yield" /></dt>
+                        <dd>{{ pct(metrics.grossYield, 2) }}</dd>
+                      </div>
+                      <div><dt>Rent as % of value (after costs)</dt><dd>{{ pct(metrics.netYield, 2) }}</dd></div>
+                    }
+                    <div><dt>Your share in 5 years</dt><dd>{{ money(metrics.equityIn(60)) }}</dd></div>
+                    <div><dt>Your share in 10 years</dt><dd>{{ money(metrics.equityIn(120)) }}</dd></div>
+                  }
                 </dl>
+                @if (prefs.advanced()) {
+                  <p class="micro muted" style="margin-top:10px">
+                    Future figures assume the yearly price rise you entered and that the mortgage is paid as now —
+                    in future money (not adjusted for rising prices).
+                  </p>
+                }
               </sb-section>
 
-              <!-- Property reserve — only where there is rent to ring-fence -->
+              <!-- Repair fund — only where there is rent to keep separate -->
               @if (showsReserve(metrics.property)) {
-              <sb-section title="Property Reserve" explain="property-reserve" subtitle="Rental surplus is kept here, not treated as lifestyle money.">
+              <sb-section title="Repair fund" explain="property-reserve" subtitle="Spare rent is kept here for the property, not spent.">
                 <div class="col" style="gap:16px">
                   <div class="reserve">
                     <span class="reserve__value">{{ money(convert(metrics.property.maintenanceReserve, metrics.property.currency)) }}</span>
                     <span class="reserve__target">
-                      of {{ money(convert(metrics.property.maintenanceReserveTarget, metrics.property.currency)) }} target
+                      of {{ money(convert(metrics.property.maintenanceReserveTarget, metrics.property.currency)) }} goal
                     </span>
                   </div>
 
                   <sb-meter
                     [value]="reserveProgress(metrics.property)"
                     [valueText]="pct(reserveProgress(metrics.property), 0)"
-                    label="Reserve funded"
+                    label="Repair fund filled"
                     [large]="true"
                   />
 
                   <p class="small secondary">
-                    Property cash is ring-fenced on purpose: repairs, void periods and letting costs come out of the
-                    reserve rather than out of your emergency fund.
+                    Property money is kept separate on purpose: repairs, months without a tenant and letting costs are
+                    paid from here rather than from your safety cushion.
                   </p>
 
                   @if (metrics.monthlyCashFlow > 0) {
                     <div class="estimate-note">
                       <span>
-                        At the current surplus of <strong>{{ money(metrics.monthlyCashFlow) }}/month</strong>, the
-                        reserve target is reached in
+                        With <strong>{{ money(metrics.monthlyCashFlow) }}/month</strong> left over, the repair fund
+                        reaches its goal in
                         <strong>{{ monthsToReserve(metrics.property, metrics.monthlyCashFlow) }} months</strong>.
                       </span>
                     </div>
@@ -264,11 +320,11 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
               }
             </div>
 
-            <sb-section title="Equity over time" subtitle="Value appreciating while the mortgage amortises.">
+            <sb-section title="Your share over time" subtitle="The value going up while the loan goes down.">
               @if (equitySeries(metrics.property.id).length) {
-                <sb-line-chart [series]="equitySeries(metrics.property.id)" [height]="260" ariaLabel="Property equity over time" />
+                <sb-line-chart [series]="equitySeries(metrics.property.id)" [height]="260" ariaLabel="Your share of the property over time" />
               } @else {
-                <sb-empty title="No valuation history" text="Equity charts here as valuations are recorded." />
+                <sb-empty title="No history yet" text="This chart fills in as you update the value and what's owed in your monthly check-ins." />
               }
             </sb-section>
           </section>
@@ -278,17 +334,17 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
       <!-- ============================================================ -->
       @if (editorOpen()) {
         <div class="scrim" (click)="editorOpen.set(false)" role="presentation">
-          <div class="dialog dialog--wide" role="dialog" aria-modal="true" aria-label="Property" (click)="$event.stopPropagation()">
-            <h2 class="h2">{{ editingId() ? 'Edit property' : 'Add property' }}</h2>
+          <div class="dialog dialog--wide" role="dialog" aria-modal="true" aria-labelledby="pr-dialog-title" sbDialog (dismiss)="editorOpen.set(false)" (click)="$event.stopPropagation()">
+            <h2 class="h2" id="pr-dialog-title">{{ editingId() ? 'Edit property' : 'Add property' }}</h2>
 
             <form [formGroup]="form" (ngSubmit)="save()" class="col" style="gap:12px">
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
                   <label class="field__label" for="pr-name">Name</label>
-                  <input id="pr-name" class="input" formControlName="name" placeholder="City Apartment" />
+                  <input id="pr-name" class="input" formControlName="name" placeholder="City apartment" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="pr-status">Status</label>
+                  <label class="field__label" for="pr-status">How it's used</label>
                   <select id="pr-status" class="select" formControlName="rentalStatus">
                     @for (option of statuses; track option.value) {
                       <option [value]="option.value">{{ option.label }}</option>
@@ -304,66 +360,69 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="pr-value">Estimated value</label>
-                  <input id="pr-value" class="input input--num" type="number" step="100" formControlName="estimatedValue" />
+                  <label class="field__label" for="pr-value">What it's worth now (estimate)</label>
+                  <input id="pr-value" class="input input--num" type="number" step="100" min="0" formControlName="estimatedValue" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="pr-purchase">Purchase price</label>
-                  <input id="pr-purchase" class="input input--num" type="number" step="100" formControlName="purchasePrice" />
-                </div>
-              </div>
-
-              <div class="grid grid--2" style="gap:12px">
-                <div class="field">
-                  <label class="field__label" for="pr-mortgage">Mortgage balance</label>
-                  <input id="pr-mortgage" class="input input--num" type="number" step="1" formControlName="mortgageBalance" />
-                </div>
-                <div class="field">
-                  <label class="field__label" for="pr-rate">Interest rate (%)</label>
-                  <input id="pr-rate" class="input input--num" type="number" step="0.01" formControlName="interestPercent" />
+                  <label class="field__label" for="pr-purchase">What you paid</label>
+                  <input id="pr-purchase" class="input input--num" type="number" step="100" min="0" formControlName="purchasePrice" />
                 </div>
               </div>
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="pr-payment">Monthly payment</label>
-                  <input id="pr-payment" class="input input--num" type="number" step="1" formControlName="monthlyPayment" />
+                  <label class="field__label" for="pr-mortgage">Still owed on the mortgage</label>
+                  <input id="pr-mortgage" class="input input--num" type="number" step="1" min="0" formControlName="mortgageBalance" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="pr-months">Remaining months</label>
-                  <input id="pr-months" class="input input--num" type="number" step="1" formControlName="remainingMonths" />
+                  <label class="field__label" for="pr-rate">Mortgage interest rate (% per year)</label>
+                  <input id="pr-rate" class="input input--num" type="number" step="0.01" min="0" formControlName="interestPercent" />
                 </div>
               </div>
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="pr-rent">Monthly rent</label>
-                  <input id="pr-rent" class="input input--num" type="number" step="1" formControlName="monthlyRent" />
+                  <label class="field__label" for="pr-payment">Monthly mortgage payment</label>
+                  <input id="pr-payment" class="input input--num" type="number" step="1" min="0" formControlName="monthlyPayment" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="pr-expenses">Monthly property expenses</label>
-                  <input id="pr-expenses" class="input input--num" type="number" step="1" formControlName="monthlyPropertyExpenses" />
+                  <label class="field__label" for="pr-months">Months left on the mortgage</label>
+                  <input id="pr-months" class="input input--num" type="number" step="1" min="0" formControlName="remainingMonths" />
+                </div>
+              </div>
+
+              <div class="grid grid--2" style="gap:12px">
+                <div class="field">
+                  <label class="field__label" for="pr-rent">Rent you receive per month</label>
+                  <input id="pr-rent" class="input input--num" type="number" step="1" min="0" formControlName="monthlyRent" />
+                  <span class="field__hint">Leave at 0 if you live there or it's empty.</span>
+                </div>
+                <div class="field">
+                  <label class="field__label" for="pr-expenses">Monthly running costs</label>
+                  <input id="pr-expenses" class="input input--num" type="number" step="1" min="0" formControlName="monthlyPropertyExpenses" />
+                  <span class="field__hint">Insurance, service charge, upkeep.</span>
                 </div>
               </div>
 
               <div class="grid grid--3" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="pr-reserve">Reserve balance</label>
-                  <input id="pr-reserve" class="input input--num" type="number" step="1" formControlName="maintenanceReserve" />
+                  <label class="field__label" for="pr-reserve">Repair fund balance</label>
+                  <input id="pr-reserve" class="input input--num" type="number" step="1" min="0" formControlName="maintenanceReserve" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="pr-reserve-target">Reserve target</label>
-                  <input id="pr-reserve-target" class="input input--num" type="number" step="1" formControlName="maintenanceReserveTarget" />
+                  <label class="field__label" for="pr-reserve-target">Repair fund goal</label>
+                  <input id="pr-reserve-target" class="input input--num" type="number" step="1" min="0" formControlName="maintenanceReserveTarget" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="pr-appreciation">Appreciation (%/yr)</label>
+                  <label class="field__label" for="pr-appreciation">Expected price rise (% per year)</label>
                   <input id="pr-appreciation" class="input input--num" type="number" step="0.1" formControlName="appreciationPercent" />
                 </div>
               </div>
 
               <div class="field">
-                <label class="field__label" for="pr-rent-start">Expected rent start</label>
+                <label class="field__label" for="pr-rent-start">Rent expected from</label>
                 <input id="pr-rent-start" class="input" type="date" formControlName="expectedRentStart" />
+                <span class="field__hint">Only if it isn't rented out yet.</span>
               </div>
 
               <div class="field">
@@ -388,7 +447,7 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
       <sb-confirm
         [open]="confirmDelete()"
         title="Delete this property?"
-        message="Its valuations and mortgage will be removed from your net worth."
+        message="Its value history and mortgage will be removed from your net worth."
         (confirmed)="remove()"
         (cancelled)="confirmDelete.set(false)"
       />
@@ -398,6 +457,7 @@ const STATUSES: Array<{ value: RentalStatus; label: string }> = [
 })
 export class PropertyComponent {
   readonly store = inject(FinanceStore);
+  readonly prefs = inject(ViewPrefsService);
   private readonly currency = inject(CurrencyService);
   private readonly fb = inject(FormBuilder);
 
@@ -405,6 +465,7 @@ export class PropertyComponent {
   readonly editorOpen = signal(false);
   readonly editingId = signal<string | null>(null);
   readonly confirmDelete = signal(false);
+  private editingCurrency: string | null = null;
 
   readonly form = this.fb.nonNullable.group({
     name: ['', Validators.required],
@@ -432,7 +493,7 @@ export class PropertyComponent {
     return [
       {
         key: 'equity',
-        name: 'Equity',
+        name: 'Your share',
         color: seriesColor(0),
         area: true,
         points: valuations.map((v) => ({ label: v.valuationDate, value: v.estimatedValue - v.mortgageBalance })),
@@ -445,7 +506,7 @@ export class PropertyComponent {
       },
       {
         key: 'mortgage',
-        name: 'Mortgage',
+        name: 'Still owed',
         color: seriesColor(1),
         points: valuations.map((v) => ({ label: v.valuationDate, value: v.mortgageBalance })),
       },
@@ -479,19 +540,48 @@ export class PropertyComponent {
 
   waterfallSubtitle(metrics: PropertyMetrics): string {
     if (metrics.usage === 'let') {
-      return 'Each month the rent is spent in this order. Only what survives to the bottom is yours to allocate.';
+      return 'Each month the rent pays these, in this order. What is left at the bottom is yours.';
     }
-    if (metrics.usage === 'lived-in') return 'Paid out of income — this property produces no rent.';
-    return 'Costs continue while the property sits empty; nothing is coming in to meet them.';
+    if (metrics.usage === 'lived-in') return 'Paid from your income — a home you live in brings in no rent.';
+    return 'The costs keep coming while it sits empty, and no rent is coming in to cover them.';
   }
 
   usageLabel(metrics: PropertyMetrics): string {
-    if (metrics.usage === 'let') return 'Investment · let to tenants';
+    if (metrics.usage === 'let') return 'Investment · rented out';
     if (metrics.usage === 'lived-in') return 'Your home';
     return 'Investment · no tenant';
   }
 
-  readonly portfolio = computed(() => propertyPortfolio(this.store.properties()));
+  readonly portfolio = computed(() => propertyPortfolio(this.store.properties(), this.store.convert()));
+
+  owedCaption(metrics: PropertyMetrics): string {
+    const property = metrics.property;
+    if (property.mortgageBalance <= 0) return 'No mortgage — fully yours';
+    const parts = [`${this.pct(metrics.loanToValue, 0)} of the value`];
+    if (property.mortgageInterestRate > 0) parts.push(`${this.pct(property.mortgageInterestRate * 100, 2)} interest`);
+    if (property.remainingMonths > 0) parts.push(`${property.remainingMonths} months left`);
+    return parts.join(' · ');
+  }
+
+  cashFlowCaption(metrics: PropertyMetrics): string {
+    if (metrics.property.monthlyRent <= 0) return 'No rent coming in yet';
+    if (this.prefs.advanced()) return `Rent is ${this.pct(metrics.netYield, 2)} of value a year, after costs`;
+    return metrics.monthlyCashFlow >= 0 ? 'Rent left after costs and mortgage' : 'Rent does not cover the costs — you top it up';
+  }
+
+  /**
+   * Waterfall labels come from the calculations in plain-ish English; a
+   * few words still read like a finance textbook, so swap them here.
+   */
+  plain(text: string): string {
+    return text
+      .replace(/the Property Reserve/g, 'the repair fund')
+      .replace(/Property Reserve/g, 'Repair fund')
+      .replace(/Ring-fenced/g, 'Kept separate')
+      .replace(/ring-fenced/g, 'kept separate')
+      .replace(/void periods/g, 'months without a tenant')
+      .replace(/never lifestyle money/g, 'not spending money');
+  }
 
   /** Rent the household pays to live somewhere — never rent it receives. */
   readonly rentPaid = computed(() => {
@@ -539,6 +629,7 @@ export class PropertyComponent {
 
   openEditor(property?: Property): void {
     this.editingId.set(property?.id ?? null);
+    this.editingCurrency = property?.currency ?? null;
     this.form.reset({
       name: property?.name ?? '',
       address: property?.address ?? '',
@@ -569,7 +660,8 @@ export class PropertyComponent {
     const values = {
       name: raw.name.trim(),
       address: raw.address?.trim() || null,
-      currency: this.currency.baseCurrency(),
+      // Editing keeps the property's own currency; new ones use the base currency.
+      currency: this.editingCurrency ?? this.currency.baseCurrency(),
       rentalStatus: raw.rentalStatus,
       estimatedValue: Number(raw.estimatedValue),
       purchasePrice: raw.purchasePrice === null ? null : Number(raw.purchasePrice),

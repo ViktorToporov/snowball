@@ -33,6 +33,10 @@ import { ExplainComponent } from './explain.component';
         }
       </div>
 
+      @if (hint()) {
+        <p class="stat__hint">{{ hint() }}</p>
+      }
+
       <div class="stat__value" [class.stat__value--sm]="compact()">{{ displayValue() }}</div>
 
       <div class="stat__foot">
@@ -77,11 +81,14 @@ import { ExplainComponent } from './explain.component';
       .stat__label {
         display: inline-flex;
         align-items: center;
+        flex-wrap: wrap;
+        min-width: 0;
         gap: 5px;
         font-size: 12.5px;
         font-weight: 550;
         color: var(--ink-secondary);
       }
+      .stat__hint { margin: -4px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--ink-muted); }
       .stat__value {
         font-size: 27px;
         font-weight: 640;
@@ -108,6 +115,8 @@ export class StatCardComponent {
   readonly deltaFormat = input<'currency' | 'percent'>('currency');
   readonly period = input('this month');
   readonly caption = input<string | null>(null);
+  /** A one-line plain-English subtitle under the label. */
+  readonly hint = input<string | null>(null);
   readonly invertDelta = input(false);
   readonly trend = input<number[]>([]);
   readonly accent = input(false);
@@ -123,15 +132,17 @@ export class StatCardComponent {
     if (value === null) return '—';
     if (this.format() === 'percent') return this.currency.percent(value, value >= 100 ? 0 : 1);
     if (this.format() === 'number') return value.toLocaleString(this.currency.locale());
-    return this.currency.format(value, { decimals: Math.abs(value) >= 10000 ? 0 : undefined });
+    // Headline money is always whole units — cents are noise at this size.
+    return this.currency.format(value, { decimals: 0 });
   });
 
   readonly deltaText = computed(() => {
     const delta = this.delta();
     if (delta === null || delta === 0) return null;
-    return this.deltaFormat() === 'percent'
-      ? this.currency.percent(delta, 1, true)
-      : this.currency.format(delta, { signed: true, decimals: Math.abs(delta) >= 1000 ? 0 : 2 });
+    if (this.deltaFormat() === 'percent') return this.currency.percent(delta, 1, true);
+    // A change that rounds to nothing is not worth a coloured "+€0".
+    if (Math.round(delta) === 0) return null;
+    return this.currency.format(delta, { signed: true, decimals: 0 });
   });
 
   private readonly deltaDirection = computed(() => {

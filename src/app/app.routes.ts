@@ -40,13 +40,13 @@ export const routes: Routes = [
     children: [
       {
         path: 'dashboard',
-        title: 'Dashboard · Snowball',
+        title: 'Overview · Snowball',
         loadComponent: () =>
           import('./features/dashboard/dashboard.component').then((m) => m.DashboardComponent),
       },
       {
         path: 'cash-flow',
-        title: 'Cash Flow · Snowball',
+        title: 'Money & bills · Snowball',
         loadComponent: () =>
           import('./features/cash-flow/cash-flow.component').then((m) => m.CashFlowComponent),
       },
@@ -58,7 +58,7 @@ export const routes: Routes = [
       },
       {
         path: 'net-worth',
-        title: 'Net Worth · Snowball',
+        title: 'Net worth · Snowball',
         loadComponent: () =>
           import('./features/net-worth/net-worth.component').then((m) => m.NetWorthComponent),
       },
@@ -75,13 +75,13 @@ export const routes: Routes = [
       },
       {
         path: 'strategy',
-        title: 'Strategy · Snowball',
+        title: 'My plan · Snowball',
         loadComponent: () =>
           import('./features/strategy/strategy.component').then((m) => m.StrategyComponent),
       },
       {
         path: 'forecasts',
-        title: 'Forecasts · Snowball',
+        title: 'Future · Snowball',
         loadComponent: () =>
           import('./features/forecasts/forecasts.component').then((m) => m.ForecastsComponent),
       },

@@ -516,8 +516,8 @@ describe('strategy engine', () => {
     );
   });
 
-  it('warns that physical cash is above its ceiling', () => {
-    expect(assessment.signals.some((s) => s.title.includes('above its ceiling'))).toBe(true);
+  it('warns that physical cash is over its maximum', () => {
+    expect(assessment.signals.some((s) => s.title.includes('over its maximum'))).toBe(true);
   });
 
   it('evaluates the monthly investment rule against actual contributions', () => {
@@ -529,7 +529,7 @@ describe('strategy engine', () => {
   it('runs the property rule now that rent is flowing', () => {
     const rule = assessment.rules.find((r) => r.rule.ruleType === 'property')!;
     expect(rule.status).toBe('met');
-    expect(rule.detail).toContain('property reserve');
+    expect(rule.detail).toContain('repair fund');
   });
 
   it('keeps one phase active, marks Phase 1 complete and unlocks Phase 3', () => {

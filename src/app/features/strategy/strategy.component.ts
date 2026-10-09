@@ -7,6 +7,9 @@ import { CurrencyService } from '../../core/money/currency.service';
 import { formatRelative } from '../../core/money/format';
 import { StrategyRule } from '../../core/models/domain.models';
 import { FinanceStore } from '../../core/state/finance.store';
+import { ToastService } from '../../core/ui/toast.service';
+import { DialogDirective } from '../../shared/ui/dialog.directive';
+import { humanize } from '../../shared/ui/humanize.pipe';
 import { ExplainComponent } from '../../shared/ui/explain.component';
 import {
   ConfirmDialogComponent,
@@ -31,18 +34,19 @@ import {
     SkeletonComponent,
     EmptyStateComponent,
     ConfirmDialogComponent,
+    DialogDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <header class="page-head">
         <div class="page-head__titles">
-          <p class="eyebrow">The plan</p>
-          <h1 class="h1">Strategy</h1>
+          <p class="eyebrow">Where your money is going</p>
+          <h1 class="h1">My plan</h1>
         </div>
         <div class="page-head__actions">
           <button type="button" class="btn btn--ghost btn--sm" (click)="openPriorities()">Edit priorities</button>
-          <button type="button" class="btn btn--primary btn--sm" (click)="openRule()">Add rule</button>
+          <button type="button" class="btn btn--primary btn--sm" (click)="openRule()">Add a check</button>
         </div>
       </header>
 
@@ -61,15 +65,15 @@ import {
             </div>
             <dl class="status__metrics">
               <div>
-                <dt>Security floor</dt>
+                <dt>Safety cushion <sb-explain key="emergency-fund" /></dt>
                 <dd>{{ money(s.securityFloor) }}</dd>
               </div>
               <div>
-                <dt>Available above floor</dt>
+                <dt>Free to spend or invest <sb-explain key="available-above-floor" /></dt>
                 <dd>{{ money(s.availableAboveFloor) }}</dd>
               </div>
               <div>
-                <dt>Committed &lt; 3 months</dt>
+                <dt>Due in the next 3 months</dt>
                 <dd>{{ money(s.committedSoon) }}</dd>
               </div>
             </dl>
@@ -77,7 +81,7 @@ import {
         </section>
 
         <!-- ------------------------------------------------------- -->
-        <sb-section title="Priorities" subtitle="What your money is for, in order. Percentages describe intent, not a hard budget.">
+        <sb-section title="Priorities" subtitle="What your money is for, in order. The percentages show how you'd like to split what's left each month — a guide, not a strict budget.">
           @if (priorities().length) {
             <ol class="priorities">
               @for (priority of priorities(); track priority.id) {
@@ -97,14 +101,14 @@ import {
               }
             </ol>
           } @else {
-            <sb-empty title="No priorities set" text="Rank what matters — security, wealth building, lifestyle.">
+            <sb-empty title="No priorities yet" text="Rank what matters to you — a safety cushion, investing, enjoying life.">
               <button type="button" class="btn btn--primary btn--sm" (click)="openPriorities()">Set priorities</button>
             </sb-empty>
           }
         </sb-section>
 
         <!-- ------------------------------------------------------- -->
-        <sb-section title="Financial phases" subtitle="Each phase has its own rules; they unlock as conditions are met.">
+        <sb-section title="Your stages" subtitle="Your plan moves in stages. Each one has its own checks and opens up when the one before it is done.">
           <div class="phases">
             @for (evaluation of store.phases(); track evaluation.phase.id) {
               <article class="phase" [class]="'phase phase--' + evaluation.state">
@@ -114,13 +118,13 @@ import {
                     <div class="col" style="gap:1px; min-width:0">
                       <h3 class="phase__name truncate">{{ evaluation.phase.name }}</h3>
                       <span class="phase__state">
-                        {{ evaluation.state === 'active' ? 'Active now' : evaluation.state === 'complete' ? 'Complete' : 'Locked' }}
+                        {{ evaluation.state === 'active' ? 'You are here' : evaluation.state === 'complete' ? 'Done' : 'Not started yet' }}
                       </span>
                     </div>
                   </div>
                   @if (evaluation.canActivate) {
                     <button type="button" class="btn btn--primary btn--sm" (click)="activate(evaluation.phase.id)">
-                      Activate
+                      Start this stage
                     </button>
                   }
                 </header>
@@ -133,7 +137,7 @@ import {
                   <sb-meter
                     [value]="evaluation.progress"
                     [valueText]="pct(evaluation.progress, 0)"
-                    [label]="evaluation.state === 'active' ? 'Toward completion' : 'Toward unlock'"
+                    [label]="evaluation.state === 'active' ? 'Progress' : 'Until this stage opens up'"
                     [tone]="evaluation.state === 'active' ? 'brand' : 'warn'"
                   />
                 }
@@ -158,8 +162,8 @@ import {
 
         <!-- ------------------------------------------------------- -->
         <sb-section
-          title="Strategy rules"
-          [subtitle]="'Evaluated against your live position' + (s.activePhase ? ' for ' + s.activePhase.name + '.' : '.')"
+          title="Checks"
+          [subtitle]="'How you are doing against the checks you set' + (s.activePhase ? ' for ' + s.activePhase.name + '.' : '.')"
         >
           @if (s.rules.length) {
             <div class="rules">
@@ -198,15 +202,15 @@ import {
               }
             </div>
           } @else {
-            <sb-empty title="No rules yet" text="Rules turn your intentions into something the app can check.">
-              <button type="button" class="btn btn--primary btn--sm" (click)="openRule()">Add a rule</button>
+            <sb-empty title="No checks yet" text="Checks turn what you want to do with your money into something Snowball can keep an eye on.">
+              <button type="button" class="btn btn--primary btn--sm" (click)="openRule()">Add a check</button>
             </sb-empty>
           }
         </sb-section>
 
         <!-- ------------------------------------------------------- -->
         @if (s.signals.length) {
-          <sb-section title="Signals" subtitle="What the engine noticed in your recent behaviour.">
+          <sb-section title="Things we noticed" subtitle="Based on your last few months.">
             <ul class="signals">
               @for (signal of s.signals; track signal.title) {
                 <li class="signal" [class]="'signal signal--' + signal.tone">
@@ -223,10 +227,10 @@ import {
 
         <div class="estimate-note">
           <span>
-            <strong>How status is decided.</strong> Snowball compares your emergency-fund gap against your
-            three-month average savings rate, then checks planned spending, account ceilings and goal schedules.
-            It never assumes a fixed monthly discretionary budget — see
-            <a routerLink="/forecasts" class="link">Forecasts</a> for the long-run picture.
+            <strong>How your status is decided.</strong> Snowball looks at how far you are from your safety
+            cushion and how much you've saved a month lately, then checks your upcoming expenses, the maximum
+            cash you want to keep and your goals. It never gives you a fixed spending budget — see
+            <a routerLink="/forecasts" class="link">Future</a> for the long-run picture.
           </span>
         </div>
       }
@@ -234,18 +238,18 @@ import {
       <!-- ============================================================ -->
       @if (ruleOpen()) {
         <div class="scrim" (click)="ruleOpen.set(false)" role="presentation">
-          <div class="dialog" role="dialog" aria-modal="true" aria-label="Strategy rule" (click)="$event.stopPropagation()">
-            <h2 class="h2">{{ editingRuleId() ? 'Edit rule' : 'Add rule' }}</h2>
+          <div class="dialog" role="dialog" aria-modal="true" aria-label="Check" sbDialog (dismiss)="ruleOpen.set(false)" (click)="$event.stopPropagation()">
+            <h2 class="h2">{{ editingRuleId() ? 'Edit check' : 'Add a check' }}</h2>
 
             <form [formGroup]="ruleForm" (ngSubmit)="saveRule()" class="col" style="gap:12px">
               <div class="field">
                 <label class="field__label" for="r-name">Name</label>
-                <input id="r-name" class="input" formControlName="name" placeholder="Emergency Fund Rule" />
+                <input id="r-name" class="input" formControlName="name" placeholder="Keep my safety cushion full" />
               </div>
 
               <div class="grid grid--2" style="gap:12px">
                 <div class="field">
-                  <label class="field__label" for="r-type">Rule type</label>
+                  <label class="field__label" for="r-type">What it checks</label>
                   <select id="r-type" class="select" formControlName="ruleType">
                     @for (option of ruleTypes; track option.value) {
                       <option [value]="option.value">{{ option.label }}</option>
@@ -253,9 +257,9 @@ import {
                   </select>
                 </div>
                 <div class="field">
-                  <label class="field__label" for="r-phase">Phase</label>
+                  <label class="field__label" for="r-phase">Stage</label>
                   <select id="r-phase" class="select" formControlName="phaseId">
-                    <option value="">All phases</option>
+                    <option value="">All stages</option>
                     @for (phase of store.data()?.phases ?? []; track phase.id) {
                       <option [value]="phase.id">{{ phase.name }}</option>
                     }
@@ -269,7 +273,7 @@ import {
                   <input id="r-target" class="input input--num" type="number" step="1" formControlName="targetValue" />
                 </div>
                 <div class="field">
-                  <label class="field__label" for="r-priority">Priority</label>
+                  <label class="field__label" for="r-priority">Order (1 = first)</label>
                   <input id="r-priority" class="input input--num" type="number" min="1" step="1" formControlName="priority" />
                 </div>
               </div>
@@ -277,13 +281,13 @@ import {
               <div class="field">
                 <label class="field__label" for="r-desc">Description</label>
                 <textarea id="r-desc" class="textarea" formControlName="description"
-                          placeholder="Hold €7,000 in instant-access cash before increasing investment contributions."></textarea>
+                          placeholder="Keep my safety cushion full before I invest more each month."></textarea>
               </div>
 
               <label class="switch">
                 <input type="checkbox" formControlName="enabled" />
                 <span class="switch__track"></span><span class="switch__thumb"></span>
-                <span class="small">Rule is active</span>
+                <span class="small">This check is on</span>
               </label>
 
               <div class="row" style="justify-content:space-between; margin-top:4px">
@@ -292,7 +296,7 @@ import {
                 } @else { <span></span> }
                 <div class="row" style="gap:8px">
                   <button type="button" class="btn btn--ghost" (click)="ruleOpen.set(false)">Cancel</button>
-                  <button type="submit" class="btn btn--primary" [disabled]="ruleForm.invalid || store.saving()">Save rule</button>
+                  <button type="submit" class="btn btn--primary" [disabled]="ruleForm.invalid || store.saving()">Save check</button>
                 </div>
               </div>
             </form>
@@ -302,9 +306,9 @@ import {
 
       @if (prioritiesOpen()) {
         <div class="scrim" (click)="prioritiesOpen.set(false)" role="presentation">
-          <div class="dialog" role="dialog" aria-modal="true" aria-label="Priorities" (click)="$event.stopPropagation()">
-            <h2 class="h2">Strategy priorities</h2>
-            <p class="small muted">Ranked, with the share of surplus each one should attract.</p>
+          <div class="dialog" role="dialog" aria-modal="true" aria-label="Priorities" sbDialog (dismiss)="prioritiesOpen.set(false)" (click)="$event.stopPropagation()">
+            <h2 class="h2">Your priorities</h2>
+            <p class="small muted">In order, with how much of what's left each month should go to each. They need to add up to 100%.</p>
 
             <div class="col" style="gap:12px">
               @for (priority of priorities(); track priority.id) {
@@ -319,22 +323,37 @@ import {
                         min="0"
                         max="100"
                         step="5"
-                        [value]="priority.allocationPercentage"
-                        (change)="updatePriority(priority.id, $any($event.target).value)"
-                        [attr.aria-label]="priority.name + ' allocation percentage'"
+                        [value]="draftValue(priority.id)"
+                        (input)="setDraft(priority.id, $any($event.target).value)"
+                        [attr.aria-label]="priority.name + ': percentage of what is left each month'"
                         style="max-width:100px"
                       />
-                      <span class="small muted">% of surplus</span>
+                      <span class="small muted">% of what's left each month</span>
                     </div>
                   </div>
                 </div>
               }
             </div>
 
-            <p class="micro muted">Total: {{ pct(prioritiesTotal(), 0) }}</p>
+            @if (draftTotalValid()) {
+              <p class="micro muted" aria-live="polite">Total: {{ pct(draftTotal(), 0) }}</p>
+            } @else {
+              <p class="field__error priorities-warning" role="alert">
+                These add up to {{ pct(draftTotal(), 0) }}. Adjust them so they add up to exactly 100%
+                ({{ draftTotal() > 100 ? pct(draftTotal() - 100, 0) + ' too much' : pct(100 - draftTotal(), 0) + ' still to share out' }}).
+              </p>
+            }
 
-            <div class="row" style="justify-content:flex-end">
-              <button type="button" class="btn btn--primary" (click)="prioritiesOpen.set(false)">Done</button>
+            <div class="row" style="justify-content:flex-end; gap:8px">
+              <button type="button" class="btn btn--ghost" (click)="prioritiesOpen.set(false)">Cancel</button>
+              <button
+                type="button"
+                class="btn btn--primary"
+                [disabled]="!draftTotalValid() || savingPriorities()"
+                (click)="savePriorities()"
+              >
+                {{ savingPriorities() ? 'Saving…' : 'Save priorities' }}
+              </button>
             </div>
           </div>
         </div>
@@ -343,7 +362,7 @@ import {
       <sb-confirm
         [open]="confirmDelete()"
         title="Delete this rule?"
-        message="Your strategy status will be recalculated without it."
+        message="Your plan status will be worked out again without it."
         (confirmed)="deleteRule()"
         (cancelled)="confirmDelete.set(false)"
       />
@@ -355,6 +374,7 @@ export class StrategyComponent {
   readonly store = inject(FinanceStore);
   private readonly currency = inject(CurrencyService);
   private readonly fb = inject(FormBuilder);
+  private readonly toast = inject(ToastService);
 
   readonly strategy = this.store.strategy;
   readonly priorities = computed(() =>
@@ -366,16 +386,20 @@ export class StrategyComponent {
   readonly editingRuleId = signal<string | null>(null);
   readonly confirmDelete = signal(false);
 
+  /** Priority percentages being edited, saved together with one action. */
+  readonly draft = signal<Record<string, number>>({});
+  readonly savingPriorities = signal(false);
+
   readonly ruleTypes = [
-    { value: 'emergency_fund', label: 'Emergency fund' },
-    { value: 'investment', label: 'Investment contribution' },
-    { value: 'lifestyle', label: 'Lifestyle / flexible spending' },
+    { value: 'emergency_fund', label: 'Safety cushion' },
+    { value: 'investment', label: 'Monthly investing' },
+    { value: 'lifestyle', label: 'Everyday spending' },
     { value: 'property', label: 'Property' },
     { value: 'debt', label: 'Debt' },
-    { value: 'allocation', label: 'Portfolio allocation' },
-    { value: 'savings_rate', label: 'Savings rate' },
-    { value: 'cash_ceiling', label: 'Cash ceiling' },
-    { value: 'custom', label: 'Custom' },
+    { value: 'allocation', label: 'Investment mix' },
+    { value: 'savings_rate', label: 'Share of income saved' },
+    { value: 'cash_ceiling', label: 'Maximum cash to keep' },
+    { value: 'custom', label: 'Your own check' },
   ];
 
   readonly ruleForm = this.fb.nonNullable.group({
@@ -390,15 +414,19 @@ export class StrategyComponent {
 
   readonly tone = computed(() => {
     const status = this.strategy()?.status;
+    // 'getting-started' falls through to info: friendly, never alarming.
     if (status === 'ahead' || status === 'on-track') return 'good' as const;
     if (status === 'attention') return 'warn' as const;
     if (status === 'off-track') return 'bad' as const;
     return 'info' as const;
   });
 
-  readonly prioritiesTotal = computed(() =>
-    this.priorities().reduce((total, priority) => total + priority.allocationPercentage, 0),
+  readonly draftTotal = computed(() =>
+    this.priorities().reduce((total, priority) => total + this.draftValue(priority.id), 0),
   );
+
+  /** Allow for floating-point noise from decimal inputs. */
+  readonly draftTotalValid = computed(() => Math.abs(this.draftTotal() - 100) < 0.01);
 
   rulesForPhase(phaseId: string) {
     return (this.store.data()?.strategyRules ?? []).filter((rule) => rule.phaseId === phaseId);
@@ -410,10 +438,10 @@ export class StrategyComponent {
     const phases = this.store.data()?.phases ?? [];
     for (const phase of phases) {
       if (phase.active && phase.id !== phaseId) {
-        await this.store.save('financial_phases', phase.id, { active: false }, 'Phase');
+        await this.store.save('financial_phases', phase.id, { active: false }, 'Stage');
       }
     }
-    await this.store.save('financial_phases', phaseId, { active: true }, 'Phase');
+    await this.store.save('financial_phases', phaseId, { active: true }, 'Stage');
   }
 
   openRule(rule?: StrategyRule): void {
@@ -448,8 +476,8 @@ export class StrategyComponent {
 
     const id = this.editingRuleId();
     const ok = id
-      ? await this.store.save('strategy_rules', id, values, 'Rule')
-      : await this.store.create('strategy_rules', { ...values, configuration: {} }, 'Rule');
+      ? await this.store.save('strategy_rules', id, values, 'Check')
+      : await this.store.create('strategy_rules', { ...values, configuration: {} }, 'Check');
     if (ok) this.ruleOpen.set(false);
   }
 
@@ -457,15 +485,44 @@ export class StrategyComponent {
     const id = this.editingRuleId();
     this.confirmDelete.set(false);
     if (!id) return;
-    if (await this.store.destroy('strategy_rules', id, 'Rule')) this.ruleOpen.set(false);
+    if (await this.store.destroy('strategy_rules', id, 'Check')) this.ruleOpen.set(false);
   }
 
   openPriorities(): void {
+    this.draft.set(Object.fromEntries(this.priorities().map((p) => [p.id, p.allocationPercentage])));
     this.prioritiesOpen.set(true);
   }
 
-  async updatePriority(id: string, value: string): Promise<void> {
-    await this.store.save('strategy_priorities', id, { allocationPercentage: Number(value) }, 'Priority');
+  draftValue(id: string): number {
+    return this.draft()[id] ?? this.priorities().find((p) => p.id === id)?.allocationPercentage ?? 0;
+  }
+
+  setDraft(id: string, value: string): void {
+    const number = Number(value);
+    this.draft.update((draft) => ({ ...draft, [id]: Number.isFinite(number) ? Math.max(0, number) : 0 }));
+  }
+
+  /** Saves every changed priority in one go, with one confirmation. */
+  async savePriorities(): Promise<void> {
+    if (!this.draftTotalValid()) return;
+    const changed = this.priorities().filter((p) => this.draftValue(p.id) !== p.allocationPercentage);
+    if (!changed.length) {
+      this.prioritiesOpen.set(false);
+      return;
+    }
+
+    this.savingPriorities.set(true);
+    const ok = await this.store.saveMany(
+      changed.map((p) => ({
+        kind: 'save' as const,
+        table: 'strategy_priorities' as const,
+        id: p.id,
+        values: { allocationPercentage: this.draftValue(p.id) },
+      })),
+      'Priorities saved',
+    );
+    this.savingPriorities.set(false);
+    if (ok) this.prioritiesOpen.set(false);
   }
 
   /* -- display --------------------------------------------------------- */
@@ -478,18 +535,18 @@ export class StrategyComponent {
   }
 
   ruleLabel(status: string): string {
-    if (status === 'met') return 'Met';
-    if (status === 'breached') return 'Breached';
+    if (status === 'met') return 'On track';
+    if (status === 'breached') return 'Not met';
     if (status === 'progressing') return 'In progress';
-    return 'Not applicable';
+    return 'Doesn’t apply yet';
   }
 
   ruleTypeLabel(type: string): string {
-    return this.ruleTypes.find((option) => option.value === type)?.label ?? type;
+    return this.ruleTypes.find((option) => option.value === type)?.label ?? humanize(type);
   }
 
   money(value: number | null): string {
-    return this.currency.format(value);
+    return this.currency.format(value, { decimals: 0 });
   }
 
   pct(value: number, decimals = 1): string {

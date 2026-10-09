@@ -80,11 +80,66 @@
   transition: background-color .14s ease, color .14s ease;
 }
 .verdict__cta:hover { background: var(--surface-hover); color: var(--ink); }
+.verdict__cta--primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-contrast);
+}
+.verdict__cta--primary:hover { background: var(--brand); color: var(--brand-contrast); filter: brightness(1.06); }
 
 @media (max-width: 900px) {
   .verdict { flex-direction: column; gap: 16px; }
   .verdict__cta { align-self: flex-start; }
 }
+
+.updated { color: var(--ink-muted); }
+.updated--stale { color: var(--status-warn); font-weight: 550; }
+
+/* ------------------------------------------------------------------ */
+/* First-run checklist and check-in reminder                           */
+/* ------------------------------------------------------------------ */
+
+.setup { display: flex; flex-direction: column; gap: 14px; }
+.setup__list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.setup__step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.setup__check {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  color: var(--brand-contrast);
+}
+.setup__step.is-done .setup__check { background: var(--status-good); border-color: var(--status-good); }
+.setup__body { flex: 1; min-width: 0; }
+.setup__label { font-size: 14px; font-weight: 580; color: var(--ink); }
+.setup__step.is-done .setup__label { color: var(--ink-muted); font-weight: 500; }
+
+.checkin-due {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-color: color-mix(in srgb, var(--brand) 34%, var(--line));
+}
+
+/* ------------------------------------------------------------------ */
+/* Show details                                                        */
+/* ------------------------------------------------------------------ */
+
+.details-toggle { display: flex; justify-content: center; }
+.details-toggle__chev { transition: transform .16s ease; }
+.details-toggle__chev.is-open { transform: rotate(180deg); }
+.factors--flat { padding-top: 0; border-top: 0; }
 
 /* ------------------------------------------------------------------ */
 /* Financial security                                                  */
@@ -210,7 +265,7 @@
 
 .signals {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 12px;
 }
 .signal {

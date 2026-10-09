@@ -19,7 +19,7 @@ describe('ExplainService', () => {
     'net-worth', 'liquid-cash', 'total-cash', 'emergency-fund', 'available-above-floor',
     'security-score', 'runway', 'monthly-income', 'essential-expenses', 'total-spending',
     'flexible-spending', 'savings-capacity', 'savings-rate', 'interest-per-year',
-    'portfolio-value', 'unrealised-gain', 'portfolio-return', 'time-weighted-return',
+    'portfolio-value', 'portfolio-cost', 'unrealised-gain', 'portfolio-return', 'time-weighted-return',
     'contributions-vs-growth', 'allocation-drift', 'rebalance', 'property-equity',
     'loan-to-value', 'property-cash-flow', 'rental-yield', 'mortgage-split',
     'property-reserve', 'goal-required', 'planned-required', 'strategy-status',
@@ -100,6 +100,37 @@ describe('ExplainService', () => {
     const points = explanation.steps.reduce((sum, step) => sum + Number(step.value.replace(' pts', '')), 0);
     const score = Number(explanation.result.value.split(' / ')[0]);
     expect(points).toBeCloseTo(score, 0);
+  });
+
+  it('leads the important figures with a personal, plain-language meaning', () => {
+    const personal: ExplainKey[] = [
+      'net-worth', 'emergency-fund', 'available-above-floor', 'security-score', 'runway',
+      'monthly-income', 'essential-expenses', 'savings-rate', 'loan-to-value',
+      'unrealised-gain', 'portfolio-return',
+    ];
+    for (const key of personal) {
+      expect(explain.explain(key)!.meaning?.length ?? 0).withContext(key).toBeGreaterThan(10);
+    }
+    expect(explain.explain('runway')!.meaning).toContain('3 to 6 months');
+  });
+
+  it('never shows developer text or maths symbols to the reader', () => {
+    for (const key of KEYS) {
+      const e = explain.explain(key)!;
+      const text = [e.title, e.meaning, e.summary, e.formula, e.note, e.source].join(' ');
+      expect(text).withContext(key).not.toContain('Σ');
+      expect(text).withContext(key).not.toContain('`');
+      expect(text).withContext(key).not.toMatch(/exchange_rates|security_score\(|database function/);
+    }
+  });
+
+  it('has a plain-language fallback for every figure, for when there is no data yet', () => {
+    for (const key of KEYS) {
+      const basic = explain.basic(key);
+      expect(basic).withContext(key).not.toBeNull();
+      expect(basic!.title.length).withContext(key).toBeGreaterThan(2);
+      expect(basic!.summary.length).withContext(key).toBeGreaterThan(20);
+    }
   });
 
   it('returns null rather than a broken explanation for an unknown key', () => {

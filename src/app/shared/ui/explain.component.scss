@@ -12,28 +12,48 @@
 /* The trigger — present but never competing with the figure it sits by */
 /* ------------------------------------------------------------------ */
 
+/* The icon stays 16px visually; the button around it is a 24px hit
+   area (44px on touch screens), pulled back in with negative margins so
+   the figure beside it does not move. */
 .explain__trigger {
+  --hit: 24px;
   display: inline-grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: var(--hit);
+  height: var(--hit);
+  margin: calc((16px - var(--hit)) / 2);
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: transparent;
   color: var(--ink-muted);
   cursor: pointer;
-  transition: color 0.14s ease, background-color 0.14s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.14s ease;
 }
-.explain__trigger svg { width: 14px; height: 14px; }
+.explain__trigger svg {
+  width: 16px;
+  height: 16px;
+  padding: 1px;
+  border-radius: 50%;
+  transition: background-color 0.14s ease;
+}
 .explain__trigger:hover,
 .explain__trigger.is-open {
   color: var(--brand);
+}
+.explain__trigger:hover svg,
+.explain__trigger.is-open svg {
   background: var(--brand-soft);
 }
 .explain__trigger:focus-visible {
   outline: 2px solid var(--brand);
-  outline-offset: 2px;
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .explain__trigger { --hit: 44px; }
 }
 
 /* ------------------------------------------------------------------ */
@@ -51,6 +71,7 @@
   width: min(340px, calc(100vw - 24px));
   max-height: min(70vh, 460px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 14px 16px 15px;
   background: var(--surface-raised);
   border: 1px solid var(--line);
@@ -87,33 +108,92 @@
 }
 
 .explain__close {
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  min-height: 28px;
+  margin: -6px -8px 0 0;
   border: 0;
   background: transparent;
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
-  padding: 3px;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
 }
 .explain__close:hover { background: var(--surface-hover); color: var(--ink); }
+
+/* The personal verdict leads — it is what most readers came for. */
+.explain__meaning {
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 1.45;
+  color: var(--ink);
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--brand);
+  background: var(--brand-soft);
+  border-radius: var(--r-sm);
+}
 
 .explain__summary {
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--ink-secondary);
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
+.explain__next {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+}
+.explain__next:hover { text-decoration: underline; }
+
+.explain__math-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 32px;
+  margin-top: 10px;
+  padding: 6px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
+  text-align: left;
+  cursor: pointer;
+}
+.explain__math-toggle:hover { color: var(--ink); }
+.explain__math-toggle:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.explain__chevron {
+  display: inline-block;
+  font-size: 15px;
+  line-height: 1;
+  transition: transform 0.14s ease;
+}
+.explain__chevron.is-open { transform: rotate(90deg); }
+
 .explain__formula {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--brand-ink);
   background: var(--brand-soft);
   border-radius: var(--r-sm);
   padding: 7px 9px;
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .explain__eyebrow {
@@ -195,11 +275,12 @@
   font-size: 11px;
   line-height: 1.45;
   color: var(--ink-muted);
-  margin-top: 6px;
+  margin-top: 8px;
   padding-top: 6px;
   border-top: 1px solid var(--line);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .explain__panel { animation: none; }
+  .explain__chevron { transition: none; }
 }

@@ -47,12 +47,20 @@ export interface CheckInInput {
   liabilities: Array<{ liabilityId: string; balance: number }>;
 }
 
+/** One step of a `saveMany` batch. */
+export type WriteOp =
+  | { kind: 'create'; table: WritableTable; values: Record<string, unknown> }
+  | { kind: 'save'; table: WritableTable; id: string; values: Record<string, unknown> }
+  | { kind: 'destroy'; table: WritableTable; id: string };
+
 export interface SetupStep {
   key: 'accounts' | 'income' | 'bills' | 'cushion' | 'check-in';
   label: string;
   hint: string;
   done: boolean;
   route: string;
+  /** Opens a specific tab, e.g. `{ tab: 'income' }` on /cash-flow. */
+  queryParams?: Record<string, string>;
 }
 
 /**
@@ -154,6 +162,25 @@ export class FinanceStore {
 
   async destroy(table: WritableTable, id: string, label = 'Record'): Promise<boolean> {
     return this.write(() => this.repository.remove(table, id), `${label} deleted`, VALUE_TABLES.has(table));
+  }
+
+  /**
+   * Several writes as one user action: one reload, one toast. Runs in
+   * order and stops at the first failure.
+   */
+  async saveMany(ops: readonly WriteOp[], successMessage: string): Promise<boolean> {
+    const userId = this.auth.user()!.id;
+    return this.write(
+      async () => {
+        for (const op of ops) {
+          if (op.kind === 'create') await this.repository.insert(op.table, { ...op.values, userId });
+          else if (op.kind === 'save') await this.repository.update(op.table, op.id, op.values);
+          else await this.repository.remove(op.table, op.id);
+        }
+      },
+      successMessage,
+      ops.some((op) => VALUE_TABLES.has(op.table)),
+    );
   }
 
   /**
@@ -416,6 +443,7 @@ export class FinanceStore {
         hint: 'Your take-home pay, and anything else that comes in regularly.',
         done: data.incomeSources.some((i) => i.active),
         route: '/cash-flow',
+        queryParams: { tab: 'income' },
       },
       {
         key: 'bills',
@@ -423,6 +451,7 @@ export class FinanceStore {
         hint: 'Rent or mortgage, utilities, insurance, subscriptions.',
         done: data.recurringExpenses.some((e) => e.active),
         route: '/cash-flow',
+        queryParams: { tab: 'bills' },
       },
       {
         key: 'cushion',

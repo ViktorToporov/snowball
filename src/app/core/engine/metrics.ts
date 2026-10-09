@@ -445,7 +445,17 @@ export function netWorthSummary(data: FinancialDataset, convert: Convert): NetWo
   const propertyValue = money.sumBy(data.properties, (p) => convert(p.estimatedValue, p.currency)).toNumber();
   const mortgages = money.sumBy(data.properties, (p) => convert(p.mortgageBalance, p.currency)).toNumber();
   const otherAssets = money.sumBy(data.otherAssets, (a) => convert(a.currentValue, a.currency)).toNumber();
-  const otherDebt = money.sumBy(data.liabilities, (l) => convert(l.balance, l.currency)).toNumber();
+  // A mortgage entered both on its property and as a liability is the
+  // same debt — the property's figure wins so it isn't counted twice.
+  const carriedOnProperty = new Set(data.properties.filter((p) => p.mortgageBalance > 0).map((p) => p.id));
+  const otherDebt = money
+    .sumBy(
+      data.liabilities.filter(
+        (l) => !(l.liabilityKind === 'mortgage' && l.propertyId && carriedOnProperty.has(l.propertyId)),
+      ),
+      (l) => convert(l.balance, l.currency),
+    )
+    .toNumber();
   const creditCards = money
     .sumBy(
       data.accounts.filter((a) => !a.isArchived && a.accountType === 'credit_card'),
@@ -632,11 +642,11 @@ export function propertyMetrics(property: Property, convert: Convert): PropertyM
         split,
       },
       {
-        label: cashFlow >= 0 ? 'Left for the Property Reserve' : 'Shortfall you cover yourself',
+        label: cashFlow >= 0 ? 'Left for the repair fund' : 'Shortfall you cover yourself',
         amount: cashFlow, running: cashFlow, kind: 'result',
         note:
           cashFlow >= 0
-            ? 'Ring-fenced for repairs and void periods — never lifestyle money'
+            ? 'Kept separate for repairs and months without a tenant — not spending money'
             : 'The property does not currently pay for itself',
       },
     ];
@@ -659,7 +669,7 @@ export function propertyMetrics(property: Property, convert: Convert): PropertyM
       },
       { label: 'Running costs', amount: round2(-expenses), running: carryingCost, kind: 'out',
         note: 'Still payable while the property sits empty' },
-      { label: 'Monthly carrying cost', amount: round2(-carryingCost), running: carryingCost, kind: 'result',
+      { label: 'Total monthly cost', amount: round2(-carryingCost), running: carryingCost, kind: 'result',
         note: 'Funded from your own cash until a tenant is found' },
     ];
   }
@@ -733,9 +743,16 @@ export interface PropertyPortfolio {
 }
 
 /** Roll-up across every property, for the page header. */
-export function propertyPortfolio(metrics: readonly PropertyMetrics[]): PropertyPortfolio {
-  const totalValue = round2(metrics.reduce((sum, m) => sum + m.property.estimatedValue, 0));
-  const totalDebt = round2(metrics.reduce((sum, m) => sum + m.property.mortgageBalance, 0));
+export function propertyPortfolio(
+  metrics: readonly PropertyMetrics[],
+  convert: Convert = identityConvert,
+): PropertyPortfolio {
+  const totalValue = round2(
+    metrics.reduce((sum, m) => sum + convert(m.property.estimatedValue, m.property.currency), 0),
+  );
+  const totalDebt = round2(
+    metrics.reduce((sum, m) => sum + convert(m.property.mortgageBalance, m.property.currency), 0),
+  );
 
   return {
     count: metrics.length,
@@ -903,7 +920,7 @@ export function upcomingTimeline(data: FinancialDataset, convert: Convert, days 
         events.push({
           date: property.expectedRentStart,
           title: `${property.name} — expected tenancy start`,
-          detail: 'Rental income begins; Phase 3 rules activate',
+          detail: 'Rent starts coming in',
           amount: null,
           kind: 'rental',
           direction: 'neutral',
@@ -997,45 +1014,45 @@ export function securityScore(input: SecurityInputs): SecurityScore {
   const factors: SecurityFactor[] = [
     {
       key: 'emergency',
-      label: 'Emergency fund',
-      detail: `${Math.round(input.emergencyProgress)}% of target`,
+      label: 'Safety cushion',
+      detail: `${Math.round(input.emergencyProgress)}% full`,
       score: clamp01(input.emergencyProgress / 100),
       weight: 40,
     },
     {
       key: 'runway',
-      label: 'Expense runway',
-      detail: runway === null ? 'No essential expenses recorded' : `${runway.toFixed(1)} months covered`,
+      label: 'Months you could live on savings',
+      detail: runway === null ? 'Add your fixed monthly bills to see this' : `${runway.toFixed(1)} months of bills covered`,
       score: clamp01((runway ?? 0) / 6),
       weight: 20,
     },
     {
       key: 'savings',
-      label: 'Savings capacity',
+      label: 'Left over after bills',
       detail:
         input.monthlyIncome > 0
-          ? `${Math.round(((input.monthlyIncome - input.essentialExpenses) / input.monthlyIncome) * 100)}% of income is uncommitted`
-          : 'No income recorded',
+          ? `${Math.round(((input.monthlyIncome - input.essentialExpenses) / input.monthlyIncome) * 100)}% of your income is left after bills`
+          : 'Add your income to see this',
       score: savingsCapacity,
       weight: 15,
     },
     {
       key: 'debt',
-      label: 'Debt burden',
+      label: 'Debt',
       detail:
         input.nonMortgageDebt > 0
-          ? 'Non-mortgage debt outstanding'
-          : 'No non-mortgage debt',
+          ? 'You have loans or card balances (mortgages not counted)'
+          : 'No loans or card balances',
       score: debtScore,
       weight: 15,
     },
     {
       key: 'liquidity',
-      label: 'Liquidity',
+      label: 'Easy-to-reach money',
       detail:
         input.netWorth > 0
-          ? `${Math.round((input.liquidCash / input.netWorth) * 100)}% of net worth is liquid`
-          : 'Net worth not established',
+          ? `${Math.round((input.liquidCash / input.netWorth) * 100)}% of what you own is cash you can use now`
+          : 'Add your accounts to see this',
       score: liquidityScore,
       weight: 10,
     },

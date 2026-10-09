@@ -30,14 +30,14 @@ const ICONS: Record<string, string> = {
 };
 
 const NAV: NavItem[] = [
-  { path: '/dashboard', label: 'Dashboard', icon: 'dashboard', group: 'overview' },
-  { path: '/cash-flow', label: 'Cash Flow', icon: 'cash', group: 'money' },
+  { path: '/dashboard', label: 'Overview', icon: 'dashboard', group: 'overview' },
+  { path: '/cash-flow', label: 'Money & bills', icon: 'cash', group: 'money' },
   { path: '/investments', label: 'Investments', icon: 'investments', group: 'money' },
-  { path: '/net-worth', label: 'Net Worth', icon: 'networth', group: 'money' },
+  { path: '/net-worth', label: 'Net worth', icon: 'networth', group: 'money' },
   { path: '/property', label: 'Property', icon: 'property', group: 'money' },
   { path: '/goals', label: 'Goals', icon: 'goals', group: 'plan' },
-  { path: '/strategy', label: 'Strategy', icon: 'strategy', group: 'plan' },
-  { path: '/forecasts', label: 'Forecasts', icon: 'forecasts', group: 'plan' },
+  { path: '/strategy', label: 'My plan', icon: 'strategy', group: 'plan' },
+  { path: '/forecasts', label: 'Future', icon: 'forecasts', group: 'plan' },
   { path: '/settings', label: 'Settings', icon: 'settings', group: 'plan' },
 ];
 
@@ -57,6 +57,21 @@ const NAV: NavItem[] = [
         </div>
 
         <nav class="sidebar__nav" aria-label="Main">
+          <!-- The one recurring task, reachable from the drawer on phones too. -->
+          <a
+            routerLink="/check-in"
+            class="btn btn--block checkin-link"
+            [class.btn--primary]="store.checkInDue()"
+            [class.btn--ghost]="!store.checkInDue()"
+            (click)="mobileNavOpen.set(false)"
+          >
+            Monthly check-in
+            @if (store.checkInDue()) {
+              <span class="checkin-dot" aria-hidden="true"></span>
+              <span class="sr-only">(due)</span>
+            }
+          </a>
+
           @for (group of groups; track group.key) {
             <div class="nav-group">
               <p class="eyebrow nav-group__label">{{ group.label }}</p>
@@ -88,7 +103,7 @@ const NAV: NavItem[] = [
               <span class="strategy-chip__dot"></span>
               <span class="col" style="gap:0">
                 <span class="strategy-chip__title">{{ strategy.headline }}</span>
-                <span class="strategy-chip__sub">{{ strategy.activePhase?.name ?? 'Strategy' }}</span>
+                <span class="strategy-chip__sub">{{ stageLabel() }}</span>
               </span>
             </a>
           }
@@ -127,6 +142,23 @@ const NAV: NavItem[] = [
             <span class="micro muted hide-sm">Loading…</span>
           } @else if (store.saving()) {
             <span class="micro muted hide-sm">Saving…</span>
+          }
+
+          @if (store.data()) {
+            <a
+              routerLink="/check-in"
+              class="btn btn--sm checkin-link"
+              [class.btn--primary]="store.checkInDue()"
+              [class.btn--ghost]="!store.checkInDue()"
+              [attr.title]="store.checkInDue() ? 'Your monthly check-in is due' : null"
+            >
+              <span class="hide-sm">Monthly check-in</span>
+              <span class="show-sm" aria-hidden="true">Check-in</span>
+              @if (store.checkInDue()) {
+                <span class="checkin-dot" aria-hidden="true"></span>
+                <span class="sr-only">(due)</span>
+              }
+            </a>
           }
 
           <button type="button" class="btn btn--quiet btn--icon" (click)="theme.toggle()"
@@ -212,12 +244,20 @@ export class ShellComponent {
       .join('');
   });
 
+  /** A small, glanceable chip — never red; the Overview carries the detail. */
   readonly statusTone = computed(() => {
     const status = this.store.strategy()?.status;
     if (status === 'ahead' || status === 'on-track') return 'good';
-    if (status === 'attention') return 'warn';
-    if (status === 'off-track') return 'bad';
+    if (status === 'attention' || status === 'off-track') return 'warn';
     return 'info';
+  });
+
+  /** The active stage in plain words, e.g. "Stage 1: Build your safety cushion". */
+  readonly stageLabel = computed(() => {
+    const phase = this.store.strategy()?.activePhase;
+    if (!phase) return 'My plan';
+    const name = /financial security|emergency/i.test(phase.name) ? 'Build your safety cushion' : phase.name;
+    return `Stage ${phase.phaseOrder}: ${name}`;
   });
 
   constructor() {

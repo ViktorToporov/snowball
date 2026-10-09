@@ -91,3 +91,4 @@ code {
   border-radius: 4px;
   background: var(--surface-hover);
 }
+.suggestions { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 6px 6px 6px 0; vertical-align: middle; }

@@ -786,41 +786,41 @@ begin
   insert into public.financial_phases (user_id, name, phase_order, active, objective, description, exit_condition)
   values
     (new.id, 'Financial Security', 1, true,
-     'Build liquid cash to the emergency fund target.',
-     'Prioritise cash accumulation. No required new investment contributions; existing investments stay invested. Flexible spending is allowed above the security floor.',
+     'Build up your safety cushion.',
+     'Focus on building savings. No new investing is needed yet, and anything already invested stays invested. Everyday spending is fine as long as your safety cushion stays intact.',
      '{"type":"emergency_fund_reached"}'::jsonb)
   returning id into v_phase1;
 
   insert into public.financial_phases (user_id, name, phase_order, active, objective, description, entry_condition)
   values
     (new.id, 'Wealth Building', 2, false,
-     'Convert surplus cash flow into invested assets.',
-     'Once the emergency fund is full, direct monthly surplus into the target portfolio allocation while holding the cash floor.',
+     'Start investing what is left over each month.',
+     'Once your safety cushion is full, invest what is left each month according to your plan, while keeping the cushion topped up.',
      '{"type":"emergency_fund_reached"}'::jsonb),
     (new.id, 'Property Optimisation', 3, false,
-     'Make property self-funding and build a property reserve.',
-     'Rental income first covers the mortgage and property costs; surplus accumulates in the property reserve.',
+     'Make a rented-out property pay for itself and build a repair fund.',
+     'Rent first pays the mortgage and running costs; anything left goes into a repair fund kept separate from spending money.',
      '{"type":"rental_income_started"}'::jsonb);
 
   insert into public.strategy_rules (user_id, phase_id, rule_type, name, description, target_value, priority, configuration)
   values
-    (new.id, v_phase1, 'emergency_fund', 'Emergency Fund Rule',
-     'Hold liquid cash equal to the emergency fund target before increasing investment contributions.',
+    (new.id, v_phase1, 'emergency_fund', 'Safety cushion check',
+     'Keep your safety cushion full before investing more.',
      7000, 1, '{"counts":"emergency_accounts"}'::jsonb),
-    (new.id, v_phase1, 'investment', 'Investment Rule',
+    (new.id, v_phase1, 'investment', 'Investing check',
      'No new investing is required while the emergency fund is below target.',
      0, 2, '{"minimum_monthly":0,"resume_when":"emergency_fund_reached"}'::jsonb),
-    (new.id, v_phase1, 'lifestyle', 'Lifestyle Rule',
-     'No fixed monthly discretionary limit. Flexible spending comes from cash above the security floor.',
+    (new.id, v_phase1, 'lifestyle', 'Spending check',
+     'No fixed monthly limit on everyday spending, as long as your safety cushion stays intact.',
      null, 3, '{"mode":"above_security_floor"}'::jsonb),
-    (new.id, v_phase1, 'property', 'Property Rule',
-     'Rental income above mortgage and property expenses goes to the Property Reserve, not to lifestyle spending.',
+    (new.id, v_phase1, 'property', 'Rented property check',
+     'Rent left after the mortgage and running costs goes into the repair fund, not everyday spending.',
      null, 4, '{"route_surplus_to":"property_reserve"}'::jsonb);
 
   insert into public.strategy_priorities (user_id, name, rank, allocation_percentage, description) values
-    (new.id, 'Financial security', 1, 70, 'Liquid cash up to the emergency fund target.'),
-    (new.id, 'Wealth building',    2, 20, 'Long-term diversified investing.'),
-    (new.id, 'Lifestyle & travel', 3, 10, 'Flexible spending funded from cash above the floor.');
+    (new.id, 'Financial security', 1, 70, 'Building your safety cushion.'),
+    (new.id, 'Wealth building',    2, 20, 'Investing for the long term.'),
+    (new.id, 'Lifestyle & travel', 3, 10, 'Everyday spending and trips, once the cushion is safe.');
 
   insert into public.forecast_scenarios (user_id, name, kind, is_default, investment_return, salary_growth, inflation)
   values (new.id, 'Base case', 'base', true, 0.07, 0.03, 0.02);
@@ -1036,7 +1036,11 @@ as $$
     + coalesce((select sum(public.convert_amount(o.current_value, o.currency, public.base_currency(p_user)))
                   from public.other_assets o where o.user_id = p_user), 0)
     - coalesce((select sum(public.convert_amount(l.balance, l.currency, public.base_currency(p_user)))
-                  from public.liabilities l where l.user_id = p_user), 0);
+                  from public.liabilities l where l.user_id = p_user
+                    -- A mortgage already carried on its property is not counted twice.
+                    and not (l.liability_kind = 'mortgage' and exists (
+                      select 1 from public.properties p
+                       where p.id = l.property_id and p.mortgage_balance > 0))), 0);
 $$;
 
 -- ---- Strategy ----------------------------------------------------------
@@ -1410,7 +1414,11 @@ select
   coalesce((select sum(public.convert_amount(p.mortgage_balance, p.currency, pr.base_currency))
               from public.properties p where p.user_id = pr.id), 0)
   + coalesce((select sum(public.convert_amount(l.balance, l.currency, pr.base_currency))
-              from public.liabilities l where l.user_id = pr.id), 0)    as liabilities,
+              from public.liabilities l where l.user_id = pr.id
+                    -- A mortgage already carried on its property is not counted twice.
+                    and not (l.liability_kind = 'mortgage' and exists (
+                      select 1 from public.properties p
+                       where p.id = l.property_id and p.mortgage_balance > 0))), 0)    as liabilities,
   public.current_net_worth(pr.id)           as net_worth
 from public.profiles pr;
 
@@ -1445,16 +1453,16 @@ begin
 
     execute format(
       'create policy "%1$s_select_own" on public.%1$I
-         for select to authenticated using (auth.uid() = user_id)', t);
+         for select to authenticated using ((select auth.uid()) = user_id)', t);
     execute format(
       'create policy "%1$s_insert_own" on public.%1$I
-         for insert to authenticated with check (auth.uid() = user_id)', t);
+         for insert to authenticated with check ((select auth.uid()) = user_id)', t);
     execute format(
       'create policy "%1$s_update_own" on public.%1$I
-         for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id)', t);
+         for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id)', t);
     execute format(
       'create policy "%1$s_delete_own" on public.%1$I
-         for delete to authenticated using (auth.uid() = user_id)', t);
+         for delete to authenticated using ((select auth.uid()) = user_id)', t);
   end loop;
 end
 $$;
@@ -1467,11 +1475,11 @@ drop policy if exists "profiles_insert_own" on public.profiles;
 drop policy if exists "profiles_update_own" on public.profiles;
 
 create policy "profiles_select_own" on public.profiles
-  for select to authenticated using (auth.uid() = id);
+  for select to authenticated using ((select auth.uid()) = id);
 create policy "profiles_insert_own" on public.profiles
-  for insert to authenticated with check (auth.uid() = id);
+  for insert to authenticated with check ((select auth.uid()) = id);
 create policy "profiles_update_own" on public.profiles
-  for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
+  for update to authenticated using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 -- Deliberately no delete policy: profiles are removed by the auth.users cascade.
 
 -- ---- categories: system rows are read-only shared reference data --------
@@ -1483,14 +1491,14 @@ drop policy if exists "categories_update_own" on public.categories;
 drop policy if exists "categories_delete_own" on public.categories;
 
 create policy "categories_select" on public.categories
-  for select to authenticated using (is_system or auth.uid() = user_id);
+  for select to authenticated using (is_system or (select auth.uid()) = user_id);
 create policy "categories_insert_own" on public.categories
-  for insert to authenticated with check (auth.uid() = user_id and not is_system);
+  for insert to authenticated with check ((select auth.uid()) = user_id and not is_system);
 create policy "categories_update_own" on public.categories
-  for update to authenticated using (auth.uid() = user_id and not is_system)
-                            with check (auth.uid() = user_id and not is_system);
+  for update to authenticated using ((select auth.uid()) = user_id and not is_system)
+                            with check ((select auth.uid()) = user_id and not is_system);
 create policy "categories_delete_own" on public.categories
-  for delete to authenticated using (auth.uid() = user_id and not is_system);
+  for delete to authenticated using ((select auth.uid()) = user_id and not is_system);
 
 -- ---- exchange_rates: shared read-only reference data --------------------
 alter table public.exchange_rates enable row level security;

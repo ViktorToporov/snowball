@@ -38,6 +38,13 @@ export interface Explanation {
   source?: string;
 }
 
+/**
+ * The plain-language part of an explanation, with no numbers in it.
+ * Used on its own when there is not enough data yet to work an example
+ * through — so a brand-new user still gets told what a figure means.
+ */
+export type ExplainBasic = Pick<Explanation, 'title' | 'summary' | 'meaning' | 'nextStep' | 'source'>;
+
 export type ExplainKey =
   | 'net-worth'
   | 'liquid-cash'

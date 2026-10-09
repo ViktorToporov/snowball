@@ -120,22 +120,22 @@ export function assessStrategy(input: StrategyInputs): StrategyAssessment {
   if (enoughHistory && shortfall > 0 && recentMonthlySaving <= 0) {
     signals.push({
       tone: 'bad',
-      title: 'Cash is not growing',
-      detail: `Over the last ${window.length || 0} complete months you saved ${fmt(recentMonthlySaving)} a month on average. At this rate the ${fmt(securityFloor)} security target will not be reached.`,
+      title: 'Your savings are not growing',
+      detail: `Over the last ${window.length || 0} full months you saved ${fmt(recentMonthlySaving)} a month on average. At this pace you won't reach your ${fmt(securityFloor)} safety cushion.`,
     });
   }
 
   if (committedSoon > cash.liquidTotal) {
     signals.push({
       tone: 'bad',
-      title: 'Planned spending exceeds available cash',
-      detail: `${fmt(committedSoon)} of planned expenses fall due within three months, against ${fmt(cash.liquidTotal)} of liquid cash.`,
+      title: 'Upcoming expenses are more than the cash you have',
+      detail: `${fmt(committedSoon)} of planned expenses are due in the next three months, but you have ${fmt(cash.liquidTotal)} of cash you can use now.`,
     });
   } else if (committedSoon > 0 && committedSoon > cash.liquidTotal * 0.5) {
     signals.push({
       tone: 'warn',
-      title: 'Upcoming expenses will absorb much of your cash',
-      detail: `${fmt(committedSoon)} is earmarked for planned spending in the next three months — over half of your liquid cash.`,
+      title: 'Upcoming expenses will use much of your cash',
+      detail: `${fmt(committedSoon)} is set aside for planned expenses in the next three months — more than half of the cash you can use now.`,
     });
   }
 
@@ -143,8 +143,8 @@ export function assessStrategy(input: StrategyInputs): StrategyAssessment {
   for (const account of overCeiling) {
     signals.push({
       tone: 'warn',
-      title: `${account.name} is above its ceiling`,
-      detail: `${fmt(account.overCeilingBy!)} more than the ${fmt(account.targetBalance ?? 0)} limit. Idle cash earns nothing here.`,
+      title: `${account.name} is over its maximum`,
+      detail: `${fmt(account.overCeilingBy!)} more than the ${fmt(account.targetBalance ?? 0)} you want to keep here. Money sitting here earns no interest.`,
     });
   }
 
@@ -152,14 +152,14 @@ export function assessStrategy(input: StrategyInputs): StrategyAssessment {
   if (flexibleTrend !== null && flexibleTrend > 25) {
     signals.push({
       tone: 'warn',
-      title: 'Flexible spending is climbing',
-      detail: `Recent flexible spending is ${Math.round(flexibleTrend)}% above your 12-month average. That is allowed — it just pushes the security date out.`,
+      title: 'Everyday spending is going up',
+      detail: `Your everyday spending lately is ${Math.round(flexibleTrend)}% above your 12-month average. That's fine — it just means your safety cushion will take a bit longer to fill.`,
     });
   } else if (flexibleTrend !== null && flexibleTrend < -15) {
     signals.push({
       tone: 'good',
-      title: 'Flexible spending has come down',
-      detail: `Recent flexible spending is ${Math.abs(Math.round(flexibleTrend))}% below your 12-month average, which is accelerating the plan.`,
+      title: 'Everyday spending has come down',
+      detail: `Your everyday spending lately is ${Math.abs(Math.round(flexibleTrend))}% below your 12-month average, which moves your plan along faster.`,
     });
   }
 
@@ -170,16 +170,17 @@ export function assessStrategy(input: StrategyInputs): StrategyAssessment {
       title: `${behindGoals.length} goal${behindGoals.length > 1 ? 's are' : ' is'} behind schedule`,
       detail: behindGoals
         .slice(0, 3)
-        .map((g) => `${g.goal.name} needs ${fmt(g.requiredMonthly ?? 0)}/month`)
+        .map((g) => `${g.goal.name} needs ${fmt(g.requiredMonthly ?? 0)} a month`)
         .join(' · '),
     });
   }
 
-  if (cash.emergencyProgress >= 100) {
+  // A target of zero reads as 100% full; that is "not set", not "done".
+  if (cash.emergencyTarget > 0 && cash.emergencyProgress >= 100) {
     signals.push({
       tone: 'good',
-      title: 'Emergency fund is fully funded',
-      detail: `Phase 1 is complete. ${nextPhase ? `${nextPhase.name} can be activated.` : ''}`.trim(),
+      title: 'Your safety cushion is full',
+      detail: `Stage 1 is done. ${nextPhase ? `You can move on to ${nextPhase.name}.` : ''}`.trim(),
     });
   }
 
@@ -192,7 +193,7 @@ export function assessStrategy(input: StrategyInputs): StrategyAssessment {
     if (evaluation.rule.ruleType === 'cash_ceiling') continue;
     signals.push({
       tone: 'warn',
-      title: `${evaluation.rule.name} is not being met`,
+      title: `${evaluation.rule.name} isn't being met`,
       detail: `${evaluation.headline} — ${evaluation.detail}`,
     });
   }
@@ -288,23 +289,23 @@ function buildExplanation(input: {
   const { fmt } = input;
 
   if (input.status === 'getting-started') {
-    return 'Snowball learns how your money moves from one monthly check-in to the next. Add your accounts and income, then come back next month for your first verdict.';
+    return 'Snowball learns how your money moves from one monthly check-in to the next. Add your accounts and income, then come back next month to see how your plan is going.';
   }
 
   if (input.shortfall <= 0) {
-    return `Your emergency fund is complete at ${fmt(input.emergencyBalance)}. ${fmt(input.availableAboveFloor)} sits above the security floor and is genuinely free to allocate.`;
+    return `Your safety cushion is full at ${fmt(input.emergencyBalance)}. ${fmt(input.availableAboveFloor)} is free to spend or invest.`;
   }
 
-  const gap = `You're ${fmt(input.shortfall)} away from your ${fmt(input.securityFloor)} security target.`;
+  const gap = `You're ${fmt(input.shortfall)} away from your ${fmt(input.securityFloor)} safety cushion.`;
 
   if (input.recentMonthlySaving <= 0) {
-    return `${gap} Over the last three complete months your spending matched or exceeded your income, so the gap isn't closing. Trimming flexible spending is the fastest lever.`;
+    return `${gap} Over the last three full months you spent as much as you earned (or more), so the gap isn't closing. Spending a little less day to day is the quickest way to change that.`;
   }
 
-  const pace = `At your recent savings rate of ${fmt(input.recentMonthlySaving)}/month, you're approximately ${input.monthsToSecurity} month${input.monthsToSecurity === 1 ? '' : 's'} away.`;
+  const pace = `If you keep saving ${fmt(input.recentMonthlySaving)} a month like you have lately, you'll get there in about ${input.monthsToSecurity} month${input.monthsToSecurity === 1 ? '' : 's'}.`;
 
   if (input.committedSoon > 0) {
-    return `${gap} ${pace} ${fmt(input.committedSoon)} of that is already earmarked for planned spending in the next three months.`;
+    return `${gap} ${pace} ${fmt(input.committedSoon)} of your cash is already set aside for planned expenses in the next three months.`;
   }
 
   return `${gap} ${pace}`;
@@ -346,8 +347,8 @@ function evaluateRule(
         headline: `${fmt(current)} / ${fmt(target)}`,
         detail:
           current >= target
-            ? 'Fully funded. The floor is now a hard limit — do not spend below it.'
-            : `${fmt(target - current)} to go · ${Math.round(progress)}% secured`,
+            ? 'Full. Try not to dip below this amount.'
+            : `${fmt(target - current)} to go · ${Math.round(progress)}% there`,
         progress,
         currentValue: current,
         targetValue: target,
@@ -365,10 +366,10 @@ function evaluateRule(
         return {
           rule,
           status: gated ? 'met' : 'not-applicable',
-          headline: `${fmt(0)} required`,
+          headline: 'Nothing required',
           detail: gated
-            ? `No monthly investment required while the emergency fund is below target. Existing holdings stay invested${resumeAmount ? `; contributions resume at ${fmt(resumeAmount)}/month once it is full` : ''}.`
-            : 'No minimum contribution set.',
+            ? `No need to invest each month while your safety cushion is still filling up. What you've already invested stays invested${resumeAmount ? `; monthly investing starts again at ${fmt(resumeAmount)} a month once it's full` : ''}.`
+            : 'No minimum monthly amount set.',
           progress: null,
           currentValue: contributedThisMonth,
           targetValue: 0,
@@ -387,10 +388,10 @@ function evaluateRule(
         headline: `${fmt(contributedThisMonth)} / ${fmt(minimum)}`,
         detail:
           contributedThisMonth >= minimum
-            ? "This month's contribution has been made."
+            ? "You've invested this month's amount."
             : pending
-              ? `Not yet paid this month. Last month's ${fmt(lastMonth)} met the minimum, so the standing order is on schedule.`
-              : `${fmt(minimum - contributedThisMonth)} short of the monthly minimum.`,
+              ? `Not paid in yet this month. Last month's ${fmt(lastMonth)} was enough, so you're on schedule.`
+              : `${fmt(minimum - contributedThisMonth)} short of your monthly minimum.`,
         progress: minimum > 0 ? Math.min(100, (contributedThisMonth / minimum) * 100) : null,
         currentValue: contributedThisMonth,
         targetValue: minimum,
@@ -403,11 +404,11 @@ function evaluateRule(
       return {
         rule,
         status: available > 0 ? 'met' : 'progressing',
-        headline: `${fmt(available)} available`,
+        headline: `${fmt(available)} free`,
         detail:
           available > 0
-            ? `Cash above the security floor, after ${fmt(committed(planned))} of planned spending. No monthly limit applies.`
-            : `Cash is at or below the security floor, so flexible spending comes straight out of the emergency fund. Last month's flexible spending was ${fmt(lastMonth?.flexible ?? 0)}.`,
+            ? `Free to spend or invest, after your safety cushion and ${fmt(committed(planned))} of planned expenses. There's no monthly limit.`
+            : `Your cash is at or below your safety cushion, so everyday spending is coming out of your emergency money. Last month's everyday spending was ${fmt(lastMonth?.flexible ?? 0)}.`,
         progress: null,
         currentValue: available,
         targetValue: null,
@@ -426,7 +427,7 @@ function evaluateRule(
       if (!data.properties.length) {
         return {
           rule, status: 'not-applicable', headline: 'No property',
-          detail: 'Add a property to activate this rule.', progress: null,
+          detail: 'Add a property to start this check.', progress: null,
           currentValue: null, targetValue: reserveTarget || null,
         };
       }
@@ -442,11 +443,11 @@ function evaluateRule(
         return {
           rule,
           status: 'not-applicable',
-          headline: 'Awaiting tenant',
+          headline: 'Waiting for a tenant',
           detail:
             start !== null && start >= 0
-              ? `${upcoming.name} is ${upcoming.rentalStatus.replace(/_/g, ' ')}. Rent expected to start in ${start} month${start === 1 ? '' : 's'}; the mortgage is currently paid from salary.`
-              : `${upcoming.name} is ${upcoming.rentalStatus.replace(/_/g, ' ')}. The mortgage is currently paid from salary.`,
+              ? `${upcoming.name} is ${upcoming.rentalStatus.replace(/_/g, ' ')}. Rent should start in ${start} month${start === 1 ? '' : 's'}; until then the mortgage is paid from your salary.`
+              : `${upcoming.name} is ${upcoming.rentalStatus.replace(/_/g, ' ')}. The mortgage is paid from your salary for now.`,
           progress: reserveTarget > 0 ? (upcoming.maintenanceReserve / reserveTarget) * 100 : null,
           currentValue: upcoming.maintenanceReserve,
           targetValue: reserveTarget || null,
@@ -465,11 +466,11 @@ function evaluateRule(
       return {
         rule,
         status: surplus >= 0 ? 'met' : 'breached',
-        headline: `${fmt(surplus)}/month to reserve`,
+        headline: `${fmt(surplus)} a month to repair fund`,
         detail:
           surplus >= 0
-            ? `Rent on ${names} covers the mortgage and running costs; ${fmt(surplus)} accrues to the property reserve each month.`
-            : `Rent on ${names} falls ${fmt(-surplus)}/month short of the mortgage and running costs — the gap comes from personal cash.`,
+            ? `Rent on ${names} covers the mortgage and running costs; ${fmt(surplus)} goes into the repair fund each month.`
+            : `Rent on ${names} is ${fmt(-surplus)} a month short of the mortgage and running costs — the gap comes from your own cash.`,
         progress: reserveTarget > 0 ? Math.min(100, (reserve / reserveTarget) * 100) : null,
         currentValue: reserve,
         targetValue: reserveTarget || null,
@@ -489,8 +490,8 @@ function evaluateRule(
         headline: `${fmt(held)} / ${fmt(ceiling)}`,
         detail:
           held <= ceiling
-            ? 'Within the ceiling.'
-            : `${fmt(held - ceiling)} above the ceiling — move it somewhere it earns interest.`,
+            ? 'Within your maximum.'
+            : `${fmt(held - ceiling)} over your maximum — move it somewhere it earns interest.`,
         progress: ceiling > 0 ? Math.min(100, (held / ceiling) * 100) : null,
         currentValue: held,
         targetValue: ceiling,
@@ -501,8 +502,8 @@ function evaluateRule(
       return {
         rule,
         status: 'progressing',
-        headline: 'Target model set',
-        detail: 'Actual weights are calculated live on the Investments page, with rebalance suggestions.',
+        headline: 'Plan set',
+        detail: 'See your mix vs your plan, and how to get back to it, on the Investments page.',
         progress: null,
         currentValue: input.portfolioValue,
         targetValue: null,
@@ -519,7 +520,7 @@ function evaluateRule(
         rule,
         status: actual >= target ? 'met' : 'breached',
         headline: `${actual.toFixed(0)}% / ${target.toFixed(0)}%`,
-        detail: `Three-month average savings rate against a ${target.toFixed(0)}% target.`,
+        detail: `Share of income you saved, on average over the last three months, against your ${target.toFixed(0)}% goal.`,
         progress: target > 0 ? Math.min(100, (actual / target) * 100) : null,
         currentValue: round1(actual),
         targetValue: target,
@@ -532,7 +533,7 @@ function evaluateRule(
         rule,
         status: debt <= (rule.targetValue ?? 0) ? 'met' : 'progressing',
         headline: fmt(debt),
-        detail: debt === 0 ? 'No debt outstanding beyond the mortgage.' : 'Outstanding non-mortgage debt.',
+        detail: debt === 0 ? 'No debt apart from the mortgage.' : 'Debt you still owe, not counting the mortgage.',
         progress: null,
         currentValue: debt,
         targetValue: rule.targetValue,
@@ -544,7 +545,7 @@ function evaluateRule(
         rule,
         status: 'not-applicable',
         headline: rule.targetValue !== null ? fmt(rule.targetValue) : '—',
-        detail: rule.description ?? 'Custom rule — tracked manually.',
+        detail: rule.description ?? 'Your own check — keep an eye on it yourself.',
         progress: null,
         currentValue: null,
         targetValue: rule.targetValue,
@@ -606,21 +607,21 @@ export function evaluatePhases(input: StrategyInputs): PhaseEvaluation[] {
       const exit = String(phase.exitCondition['type'] ?? '');
 
       let progress = 0;
-      let conditionText = 'Activated manually.';
+      let conditionText = 'You start this stage yourself.';
       let met = false;
 
       if (exit === 'emergency_fund_reached' || condition === 'emergency_fund_reached') {
         progress = cash.emergencyProgress;
         met = emergencyMet;
         conditionText = emergencyMet
-          ? 'Emergency fund target reached.'
-          : `Unlocks when the emergency fund reaches its target (${Math.round(cash.emergencyProgress)}% there).`;
+          ? 'Your safety cushion is full.'
+          : `Opens up when your safety cushion is full (${Math.round(cash.emergencyProgress)}% there).`;
       } else if (condition === 'rental_income_started') {
         progress = rentStarted ? 100 : 0;
         met = rentStarted;
         conditionText = rentStarted
-          ? 'Rental income has started.'
-          : 'Unlocks when a property starts producing rental income.';
+          ? 'Rent is coming in.'
+          : 'Opens up when a property starts bringing in rent.';
       }
 
       const state: PhaseEvaluation['state'] = phase.active

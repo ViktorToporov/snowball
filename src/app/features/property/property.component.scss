@@ -194,3 +194,8 @@
   gap: 4px;
   flex-wrap: wrap;
 }
+
+/* No property owned: just the "where you live" side. */
+.housing--single { grid-template-columns: minmax(0, 1fr); }
+.housing--single .housing__note { max-width: 64ch; }
+.housing__note a { color: var(--brand); font-weight: 600; }
