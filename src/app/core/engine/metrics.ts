@@ -406,6 +406,12 @@ export interface NetWorthComponent {
   liquid: boolean;
 }
 
+export interface NetWorthPart {
+  key: 'money' | 'investments' | 'property' | 'other';
+  label: string;
+  value: number;
+}
+
 export interface NetWorthSummary {
   netWorth: number;
   totalAssets: number;
@@ -418,6 +424,12 @@ export interface NetWorthSummary {
   propertyValue: number;
   otherAssets: number;
   components: NetWorthComponent[];
+  /**
+   * Net worth in plain parts — money, investments, property (your share)
+   * and, only when non-zero, everything else — which always add back up
+   * to `netWorth`.
+   */
+  split: NetWorthPart[];
   /** Change vs the snapshot nearest one month ago. */
   changeMonth: number | null;
   changeMonthPercent: number | null;
@@ -486,6 +498,12 @@ export function netWorthSummary(data: FinancialDataset, convert: Convert): NetWo
     propertyValue: round2(propertyValue),
     otherAssets: round2(otherAssets),
     components,
+    split: netWorthSplit({
+      netWorth,
+      cash,
+      investments,
+      propertyEquity: propertyValue - mortgages,
+    }),
     changeMonth: monthAgo ? round2(netWorth - monthAgo.netWorth) : null,
     changeMonthPercent: monthAgo ? money.changePercent(netWorth, monthAgo.netWorth) : null,
     changeYear: yearAgo ? round2(netWorth - yearAgo.netWorth) : null,
@@ -528,6 +546,25 @@ export function buildSnapshot(
       totalGain: round2(worth.investments - contributions),
     },
   };
+}
+
+function netWorthSplit(input: {
+  netWorth: number;
+  cash: number;
+  investments: number;
+  propertyEquity: number;
+}): NetWorthPart[] {
+  const parts: NetWorthPart[] = [
+    { key: 'money', label: 'Money', value: round2(input.cash) },
+    { key: 'investments', label: 'Investments', value: round2(input.investments) },
+    { key: 'property', label: 'Property', value: round2(input.propertyEquity) },
+  ];
+
+  // Cars, valuables, loans and card balances: whatever is left so the
+  // parts add up exactly. Hidden when there is nothing there.
+  const other = round2(input.netWorth - parts.reduce((sum, p) => sum + p.value, 0));
+  if (Math.abs(other) >= 1) parts.push({ key: 'other', label: 'Other things & debts', value: other });
+  return parts;
 }
 
 function nearestSnapshot<T extends { snapshotDate: string }>(sorted: readonly T[], target: Date): T | null {

@@ -39,6 +39,9 @@ import { ExplainComponent } from './explain.component';
 
       <div class="stat__value" [class.stat__value--sm]="compact()">{{ displayValue() }}</div>
 
+      <!-- Optional detail right under the figure, e.g. what it's made of. -->
+      <ng-content />
+
       <div class="stat__foot">
         @if (deltaText(); as text) {
           <span class="stat__delta" [class.pos]="deltaGood()" [class.neg]="deltaBad()">

@@ -12,6 +12,7 @@ import { LineChartComponent } from '../../shared/charts/line-chart.component';
 import { DialogDirective } from '../../shared/ui/dialog.directive';
 import { ExplainComponent } from '../../shared/ui/explain.component';
 import { StatCardComponent } from '../../shared/ui/stat-card.component';
+import { NetWorthSplitComponent } from '../../shared/ui/net-worth-split.component';
 import {
   ConfirmDialogComponent,
   EmptyStateComponent,
@@ -42,6 +43,7 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
   standalone: true,
   imports: [
     CommonModule,
+    NetWorthSplitComponent,
     ReactiveFormsModule,
     RouterLink,
     DialogDirective,
@@ -77,6 +79,7 @@ const LIABILITY_KINDS: Array<{ value: LiabilityKind; label: string }> = [
           <div class="hero__main">
             <p class="eyebrow">Net worth today <sb-explain key="net-worth" /></p>
             <p class="hero__value">{{ money(nw.netWorth) }}</p>
+            <sb-net-worth-split class="hero__split" [parts]="nw.split" [large]="true" />
             <p class="hero__equation">
               {{ money(nw.totalAssets) }} you own
               <span class="muted">−</span>

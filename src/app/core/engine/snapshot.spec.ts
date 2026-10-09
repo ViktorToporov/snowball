@@ -112,3 +112,13 @@ describe('strategy for a brand-new account', () => {
     expect(assessment.status).toBe('getting-started');
   });
 });
+
+describe('net worth split', () => {
+  it('shows money, investments and property, and adds up to net worth', () => {
+    const data = buildDemoDataset();
+    const worth = netWorthSummary(data, converterFor(data));
+    expect(worth.split.slice(0, 3).map((p) => p.key)).toEqual(['money', 'investments', 'property']);
+    const total = worth.split.reduce((sum, p) => sum + p.value, 0);
+    expect(total).toBeCloseTo(worth.netWorth, 1);
+  });
+});

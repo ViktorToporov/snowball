@@ -12,6 +12,7 @@ import { Series, seriesColor } from '../../shared/charts/chart-utils';
 import { ExplainComponent } from '../../shared/ui/explain.component';
 import { humanize } from '../../shared/ui/humanize.pipe';
 import { StatCardComponent } from '../../shared/ui/stat-card.component';
+import { NetWorthSplitComponent } from '../../shared/ui/net-worth-split.component';
 import {
   EmptyStateComponent,
   MeterComponent,
@@ -37,6 +38,7 @@ const FACTOR_LABELS: Record<string, string> = {
   standalone: true,
   imports: [
     CommonModule,
+    NetWorthSplitComponent,
     RouterLink,
     StatCardComponent,
     SectionComponent,
@@ -217,7 +219,11 @@ const FACTOR_LABELS: Record<string, string> = {
               [trend]="netWorthTrend()"
               [accent]="true"
               period="this month"
-            />
+            >
+              @if (netWorth(); as nw) {
+                <sb-net-worth-split class="nw-split" [parts]="nw.split" />
+              }
+            </sb-stat-card>
             <sb-stat-card
               label="Cash you can use now"
               explain="liquid-cash"
