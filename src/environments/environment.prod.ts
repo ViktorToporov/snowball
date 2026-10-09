@@ -13,10 +13,10 @@ export const environment = {
   production: true,
 
   /** e.g. 'https://abcdefghijklmnop.supabase.co' */
-  supabaseUrl: '',
+  supabaseUrl: 'https://hogleqdbdbxtqvwpoaoq.supabase.co',
 
   /** The project's publishable / anon key. Never the service-role key. */
-  supabaseAnonKey: '',
+  supabaseAnonKey: 'sb_publishable_VOKHIgwHGATMqdMGh8YFQg_08DV2PHl',
 
   /** Host the bundled demo dataset instead of a real backend. */
   forceDemoMode: false,
@@ -24,5 +24,5 @@ export const environment = {
   appName: 'Snowball',
   tagline: 'Keep the dough rolling.',
   defaultCurrency: 'EUR',
-  defaultLocale: 'en-IE',
+  defaultLocale: 'en-GB',
 };
