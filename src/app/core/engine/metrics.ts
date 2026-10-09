@@ -12,6 +12,7 @@
 
 import { addMonths, monthKey, monthsUntil, parseDate, startOfMonth, toIsoDate } from '../money/format';
 import { dec, money } from '../money/money';
+import { investmentFlowsByMonth, investmentTotals } from './investment-values';
 import {
   Account,
   Category,
@@ -154,7 +155,7 @@ export interface CashFlowMonth {
   /** Everything spent beyond the baseline. */
   flexible: number;
   totalExpenses: number;
-  /** Money that went into investments rather than being spent. */
+  /** Money that went into investments rather than being spent (deposits and buys). */
   contributed: number;
   net: number;
   savingsRate: number;
@@ -213,14 +214,7 @@ export function monthlyCashFlow(data: FinancialDataset, convert: Convert, months
   }
 
   // Net money moved into investments in each month.
-  const contributedByMonth = new Map<string, number>();
-  for (const txn of data.investmentTransactions) {
-    if (txn.transactionType !== 'buy' && txn.transactionType !== 'sell') continue;
-    const key = monthKey(txn.transactionDate);
-    const amount = convert(txn.amount ?? txn.quantity * txn.price, txn.currency);
-    const signed = txn.transactionType === 'buy' ? amount : -amount;
-    contributedByMonth.set(key, (contributedByMonth.get(key) ?? 0) + signed);
-  }
+  const contributedByMonth = investmentFlowsByMonth(data, convert);
 
   // One cash reading per month — the latest in that month.
   const cashByMonth = new Map<string, number>();
@@ -438,9 +432,7 @@ export function netWorthSummary(data: FinancialDataset, convert: Convert): NetWo
     )
     .toNumber();
 
-  const investments = money
-    .sumBy(data.investments, (i) => convert(i.quantity * i.currentPrice, i.currency))
-    .toNumber();
+  const investments = investmentTotals(data, convert).valueBase;
 
   const propertyValue = money.sumBy(data.properties, (p) => convert(p.estimatedValue, p.currency)).toNumber();
   const mortgages = money.sumBy(data.properties, (p) => convert(p.mortgageBalance, p.currency)).toNumber();
@@ -514,9 +506,7 @@ export function buildSnapshot(
   date: Date = new Date(),
 ): SnapshotRecord {
   const worth = netWorthSummary(data, convert);
-  const contributions = money
-    .sumBy(data.investments, (i) => convert(i.quantity * i.averageCost, i.currency))
-    .toNumber();
+  const contributions = investmentTotals(data, convert, date).moneyInBase;
 
   return {
     snapshotDate: toIsoDate(date),

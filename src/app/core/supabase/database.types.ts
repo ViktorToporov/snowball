@@ -21,7 +21,7 @@ export type DbExpenseFrequency = 'monthly' | 'quarterly' | 'annual';
 export type DbIncomeType = 'salary' | 'bonus' | 'rental' | 'investment' | 'freelance' | 'other';
 export type DbIncomeFrequency = 'monthly' | 'quarterly' | 'annual' | 'one_off';
 export type DbAssetType = 'etf' | 'stock' | 'bond' | 'mutual_fund' | 'crypto' | 'reit' | 'commodity' | 'other';
-export type DbInvestmentTxnType = 'buy' | 'sell' | 'dividend' | 'fee' | 'interest';
+export type DbInvestmentTxnType = 'buy' | 'sell' | 'dividend' | 'fee' | 'interest' | 'deposit' | 'withdrawal';
 export type DbRentalStatus = 'owner_occupied' | 'rented' | 'vacant' | 'listed';
 export type DbGoalType =
   | 'emergency_fund' | 'travel' | 'property' | 'vehicle' | 'investment'
@@ -137,6 +137,10 @@ export interface InvestmentAccountRow extends Timestamps {
   broker: string | null;
   currency: string;
   account_ref: string | null;
+  current_value: Numeric | null;
+  value_updated_at: string | null;
+  contributed_before: Numeric;
+  sort_order: number;
   notes: string | null;
 }
 
@@ -164,7 +168,8 @@ export interface InvestmentRow extends Timestamps {
 export interface InvestmentTransactionRow {
   id: string;
   user_id: string;
-  investment_id: string;
+  investment_id: string | null;
+  investment_account_id: string | null;
   transaction_type: DbInvestmentTxnType;
   quantity: Numeric;
   price: Numeric;

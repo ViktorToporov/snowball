@@ -103,6 +103,10 @@ export const mapInvestmentAccount = (r: R.InvestmentAccountRow): M.InvestmentAcc
   name: r.name,
   broker: r.broker,
   currency: r.currency,
+  currentValue: r.current_value === null || r.current_value === undefined ? null : num(r.current_value, 2),
+  valueUpdatedAt: r.value_updated_at ?? null,
+  contributedBefore: num(r.contributed_before ?? 0, 2),
+  sortOrder: r.sort_order ?? 0,
   notes: r.notes,
 });
 
@@ -131,6 +135,7 @@ export const mapInvestmentTransaction = (r: R.InvestmentTransactionRow): M.Inves
   id: r.id,
   userId: r.user_id,
   investmentId: r.investment_id,
+  investmentAccountId: r.investment_account_id ?? null,
   transactionType: r.transaction_type,
   quantity: num(r.quantity, 8),
   price: num(r.price, 6),

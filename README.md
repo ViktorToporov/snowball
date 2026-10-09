@@ -78,7 +78,10 @@ Open **SQL Editor → New query**, paste the entire contents of
 [`supabase/schema.sql`](supabase/schema.sql), and run it.
 
 This creates every table, enum, index, constraint, trigger, calculation
-function, view and Row Level Security policy. It is safe to re-run.
+function, view and Row Level Security policy. It is safe to re-run. **Re-running it is also how you upgrade**: when a new
+version of Snowball changes the database (for example, adding investment
+account totals and deposits), paste the new `schema.sql` and run it again.
+Your data is kept.
 
 Check it worked: **Table Editor** should list 25 tables, each marked as
 having Row Level Security enabled.
@@ -241,7 +244,7 @@ FX API.
 |---|---|
 | **Dashboard** | The verdict banner (on track / attention / off track) with a written explanation, nine key statistics with month-over-month deltas and sparklines, the financial security score broken into its five weighted factors, net-worth and cash trends, asset mix, and an upcoming-events timeline. |
 | **Cash Flow** | Multiple cash accounts with per-account interest, liquid/emergency flags and ceilings. Declare what recurs; spending is derived from how the balances moved. Cash-over-time against the security floor, allocation donut, income-vs-expenses columns, savings capacity and salary history. |
-| **Investments** | Holdings valued live at quantity × price, unrealised and realised gain, time-weighted return, contributions-vs-growth, target vs actual allocation with drift and tolerance bands, and rebalance suggestions (never trades). |
+| **Investments** | Organised by **investment account** (a broker, app or pension pot). Enter an account's total from its statement, or let Snowball add it up from the holdings you list. Holdings inside a total-valued account are an optional breakdown. Money in and out of each account, profit, time-weighted return, your mix vs your plan, and suggestions to get back to it (never trades). |
 | **Net Worth** | Assets − liabilities with a hero figure, monthly and yearly change, liquid/invested/property splits, a full balance sheet, and manual entry for cars, valuables and other assets. |
 | **Property** | Opens by separating **where you live** from **what you own**: if you rent, the rent you pay is shown as the expense it is, next to a roll-up of the property you own as an investment. Then per property — equity, loan-to-value, interest vs principal, gross and net yield, a rent waterfall that drains down the page (rent in → running costs → mortgage → what survives), a ring-fenced Property Reserve, and projected equity at 5 and 10 years. |
 | **Goals** | Progress, remaining, required monthly contribution, projected completion and an on-track flag. Plus planned expenses with "you need €X/month to have this by then". |
@@ -354,6 +357,14 @@ target. The forecast engine models it that way too.
 expense on a home that will never appear on your balance sheet; the other is
 income from an asset that does. Snowball never nets them off against each other,
 and the Property page says which is which before it shows you anything else.
+
+**Investment accounts come first.** Most people know what their investment
+account is worth, not the price of every fund inside it. So an account can be
+valued as a single **total** (typed in from the provider's app, updated in the
+monthly check-in) or **added up from holdings** (quantity × price). Holdings
+listed inside a total-valued account are a breakdown and are never added twice.
+Money moved into an account is recorded as a dated deposit: that is what lets
+the spending derivation tell "moved €500 to my broker" apart from "spent €500".
 
 **Contributions are not performance.** The Investments page separates money you
 paid in from what the market added, and reports a time-weighted return

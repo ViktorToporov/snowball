@@ -149,3 +149,166 @@
   .plan-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .plan-row--head { display: none; }
 }
+
+/* ------------------------------------------------------------------ */
+/* Investment account cards                                            */
+/* ------------------------------------------------------------------ */
+
+.stale-note { border-color: var(--status-warn-soft); background: var(--status-warn-soft); }
+.inline-link { color: var(--brand-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+.accts {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.acct {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.acct__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.acct__titles { min-width: 0; }
+.acct__name {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 620;
+  overflow-wrap: anywhere;
+}
+.acct__meta {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.acct__value { text-align: right; flex-shrink: 0; }
+.acct__amount { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+.acct__sub { font-size: 12px; color: var(--ink-muted); }
+
+.acct__facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.acct__facts dt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 2px;
+}
+.acct__facts dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 570;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.acct__pct { font-size: 12px; font-weight: 500; opacity: 0.85; }
+.acct__stale { color: var(--status-warn); }
+
+.acct__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.acct__inside {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.acct__inside > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 590;
+  color: var(--ink-secondary);
+  padding: 4px 0;
+}
+.acct__inside > summary:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+.acct__inside-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.acct__inside-body p { margin: 0; }
+.acct-table { border: 1px solid var(--line); border-radius: var(--r-sm); }
+
+.acct__rest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+}
+.acct__rest-name { font-size: 13.5px; font-weight: 590; }
+.acct__rest-value { font-size: 14px; font-weight: 600; white-space: nowrap; }
+
+@media (max-width: 700px) {
+  .acct { padding: 14px; }
+  .acct__head { flex-direction: column; gap: 6px; }
+  .acct__value { text-align: left; }
+  .acct__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialog bits: "move from Money & bills", radio choices               */
+/* ------------------------------------------------------------------ */
+
+.move-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+}
+.move-box p { margin: 0; }
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.choices > legend { padding: 0; margin-bottom: 6px; }
+.choices--row { flex-direction: row; flex-wrap: wrap; }
+.choices--row .choice { flex: 1 1 160px; }
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+.choice:hover { background: var(--surface-hover); }
+.choice--on { border-color: var(--brand); background: var(--brand-soft); }
+.choice input { margin-top: 3px; accent-color: var(--brand); }
+.choice__title { display: block; font-size: 13.5px; font-weight: 590; color: var(--ink); }
+.choice__text { display: block; font-size: 12px; color: var(--ink-secondary); margin-top: 2px; }

@@ -31,6 +31,7 @@ export type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 /** Writes that change a balance or a value, and so warrant a fresh snapshot. */
 const VALUE_TABLES: ReadonlySet<WritableTable> = new Set<WritableTable>([
   'accounts',
+  'investment_accounts',
   'investments',
   'investment_transactions',
   'properties',
@@ -42,6 +43,11 @@ const VALUE_TABLES: ReadonlySet<WritableTable> = new Set<WritableTable>([
 export interface CheckInInput {
   balances: Array<{ accountId: string; balance: number }>;
   prices: Array<{ investmentId: string; currentPrice: number }>;
+  /**
+   * Investment accounts valued as a total: the new total, and money moved
+   * in (positive) or out (negative) this month, if any.
+   */
+  investmentAccounts?: Array<{ investmentAccountId: string; currentValue: number | null; moneyMoved: number }>;
   income: Array<Omit<IncomeEntryInput, 'periodMonth'>>;
   properties: Array<{ propertyId: string; estimatedValue: number; mortgageBalance: number }>;
   liabilities: Array<{ liabilityId: string; balance: number }>;
@@ -210,6 +216,7 @@ export class FinanceStore {
           ...input.liabilities.map((l) =>
             this.repository.update('liabilities', l.liabilityId, { balance: l.balance }),
           ),
+          ...(input.investmentAccounts ?? []).flatMap((a) => this.investmentAccountWrites(userId, a)),
         ]);
         await this.repository.recordIncome(
           userId,
@@ -219,6 +226,41 @@ export class FinanceStore {
       'Check-in saved',
       true,
     );
+  }
+
+  /** The writes behind one investment account line of the check-in. */
+  private investmentAccountWrites(
+    userId: string,
+    line: { investmentAccountId: string; currentValue: number | null; moneyMoved: number },
+  ): Promise<unknown>[] {
+    const account = this._data()?.investmentAccounts.find((a) => a.id === line.investmentAccountId);
+    if (!account) return [];
+    const writes: Promise<unknown>[] = [];
+    if (line.currentValue !== null) {
+      writes.push(
+        this.repository.update('investment_accounts', account.id, {
+          currentValue: line.currentValue,
+          valueUpdatedAt: new Date().toISOString(),
+        }),
+      );
+    }
+    if (line.moneyMoved !== 0) {
+      writes.push(
+        this.repository.insert('investment_transactions', {
+          userId,
+          investmentAccountId: account.id,
+          investmentId: null,
+          transactionType: line.moneyMoved > 0 ? 'deposit' : 'withdrawal',
+          amount: Math.abs(line.moneyMoved),
+          quantity: 0,
+          price: 0,
+          fees: 0,
+          currency: account.currency,
+          transactionDate: toIsoDate(new Date()),
+        }),
+      );
+    }
+    return writes;
   }
 
   /** Records today's balances as this month's snapshot. */

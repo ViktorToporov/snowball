@@ -232,6 +232,62 @@ function parseField(text: string | undefined): number | null {
 
             <!-- -------------------------------------------- investments -->
             @case ('investments') {
+              @if (totalAccounts().length) {
+                <div>
+                  <h2 class="h2">Your investment accounts</h2>
+                  <p class="small muted">
+                    The total your provider's app or statement shows today, and any money you moved in or out
+                    this month — so a transfer isn't mistaken for spending.
+                  </p>
+                </div>
+
+                <div class="checkin__list">
+                  @for (account of totalAccounts(); track account.id) {
+                    <div class="checkin__row checkin__row--pair">
+                      <div class="field">
+                        <label class="field__label checkin__label" [for]="'iacc-' + account.id">
+                          {{ account.name }}
+                          <span class="field__hint">What it's worth today</span>
+                        </label>
+                        <div class="checkin__control">
+                          <span class="checkin__ccy" aria-hidden="true">{{ account.currency }}</span>
+                          <input
+                            class="input input--num checkin__input"
+                            type="number"
+                            inputmode="decimal"
+                            step="0.01"
+                            min="0"
+                            [id]="'iacc-' + account.id"
+                            [value]="fieldValue(accountValues, account.id, account.currentValue ?? 0)"
+                            (input)="setField(accountValues, account.id, $event)"
+                          />
+                        </div>
+                      </div>
+                      <div class="field">
+                        <label class="field__label checkin__label" [for]="'iflow-' + account.id">
+                          Money added this month
+                          <span class="field__hint">Optional. Use a minus for money taken out.</span>
+                        </label>
+                        <div class="checkin__control">
+                          <span class="checkin__ccy" aria-hidden="true">{{ account.currency }}</span>
+                          <input
+                            class="input input--num checkin__input"
+                            type="number"
+                            inputmode="decimal"
+                            step="0.01"
+                            placeholder="0"
+                            [id]="'iflow-' + account.id"
+                            [value]="accountFlows()[account.id] || ''"
+                            (input)="setField(accountFlows, account.id, $event)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              @if (holdings().length) {
               <div>
                 <h2 class="h2">Today's prices</h2>
                 <p class="small muted">The price of one share or unit. Your broker's app shows it next to each holding.</p>
@@ -263,6 +319,7 @@ function parseField(text: string | undefined): number | null {
                   </div>
                 }
               </div>
+              }
             }
           }
 
@@ -373,6 +430,8 @@ function parseField(text: string | undefined): number | null {
       .checkin { max-width: 720px; }
       .checkin__why { font-size: 14px; line-height: 1.55; color: var(--ink-secondary); }
 
+      .checkin__row--pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 560px) { .checkin__row--pair { grid-template-columns: 1fr; } }
       .steps { display: flex; gap: 8px; margin: 0; padding: 0; list-style: none; flex-wrap: wrap; }
       .steps__item {
         display: inline-flex; align-items: center; gap: 8px;
@@ -445,6 +504,8 @@ export class CheckInComponent {
   readonly income = signal<Record<string, string>>({});
   readonly balances = signal<Record<string, string>>({});
   readonly prices = signal<Record<string, string>>({});
+  readonly accountValues = signal<Record<string, string>>({});
+  readonly accountFlows = signal<Record<string, string>>({});
   readonly propertyValues = signal<Record<string, string>>({});
   readonly mortgages = signal<Record<string, string>>({});
   readonly debts = signal<Record<string, string>>({});
@@ -468,13 +529,27 @@ export class CheckInComponent {
     );
   });
 
-  readonly holdings = computed(() => (this.store.data()?.investments ?? []).filter((i) => i.quantity > 0));
+  /** Investment accounts the user values as a single total. */
+  readonly totalAccounts = computed(() =>
+    (this.store.data()?.investmentAccounts ?? []).filter((a) => a.currentValue !== null && a.currentValue !== undefined),
+  );
+
+  /**
+   * Holdings valued by price. Holdings inside a total-valued account are
+   * only a breakdown of its total, so they aren't asked about here.
+   */
+  readonly holdings = computed(() => {
+    const totals = new Set(this.totalAccounts().map((a) => a.id));
+    return (this.store.data()?.investments ?? []).filter(
+      (i) => i.quantity > 0 && !(i.investmentAccountId && totals.has(i.investmentAccountId)),
+    );
+  });
   readonly properties = computed(() => this.store.data()?.properties ?? []);
   readonly liabilities = computed(() => this.store.data()?.liabilities ?? []);
   readonly hasHomeOrDebts = computed(() => this.properties().length > 0 || this.liabilities().length > 0);
 
   readonly steps = computed<StepKey[]>(() =>
-    this.holdings().length ? ['pay', 'balances', 'investments'] : ['pay', 'balances'],
+    this.holdings().length || this.totalAccounts().length ? ['pay', 'balances', 'investments'] : ['pay', 'balances'],
   );
   readonly step = computed(() => this.steps()[Math.min(this.stepIndex(), this.steps().length - 1)]);
   readonly isLastStep = computed(() => this.stepIndex() >= this.steps().length - 1);
@@ -639,7 +714,16 @@ export class CheckInComponent {
       currency: source.currency,
     }));
 
-    return { balances, prices, income, properties, liabilities };
+    const investmentAccounts: NonNullable<CheckInInput['investmentAccounts']> = [];
+    for (const account of this.totalAccounts()) {
+      const value = changed(this.accountValues()[account.id], account.currentValue ?? 0);
+      const moved = parseField(this.accountFlows()[account.id]) ?? 0;
+      // Confirming an unchanged total still counts as "updated today".
+      const confirmed = value ?? account.currentValue ?? 0;
+      investmentAccounts.push({ investmentAccountId: account.id, currentValue: Math.max(0, confirmed), moneyMoved: moved });
+    }
+
+    return { balances, prices, income, properties, liabilities, investmentAccounts };
   }
 
   async save(): Promise<void> {

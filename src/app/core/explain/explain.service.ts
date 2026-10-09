@@ -93,11 +93,11 @@ const BASICS: Record<ExplainKey, ExplainBasic> = {
   },
   'portfolio-value': {
     title: 'Investments value',
-    summary: 'What all your investments are worth at the latest prices you entered.',
+    summary: 'What all your investment accounts are worth, using the latest totals and prices you entered.',
   },
   'portfolio-cost': {
     title: 'Money you put in',
-    summary: 'What you paid for the investments you still hold.',
+    summary: 'The money that went into your investments, so profit can be told apart from your own savings.',
   },
   'unrealised-gain': {
     title: 'Profit on paper (not sold yet)',
@@ -597,43 +597,65 @@ export class ExplainService {
 
     'portfolio-value': () => {
       const portfolio = this.store.portfolio();
-      if (!portfolio || !portfolio.positions.length) return null;
+      if (!portfolio || (!portfolio.accounts.length && !portfolio.unassignedPositions.length)) return null;
 
       return {
         ...BASICS['portfolio-value'],
-        formula: 'Value = add up (number of shares × latest price), converted to your currency',
-        steps: portfolio.positions.map((position) => ({
-          label: position.investment.name,
-          value: this.money(position.currentValueBase),
-          hint: `${position.investment.quantity} × ${this.currency.formatIn(position.investment.currentPrice, position.investment.currency)}`,
-        })),
+        formula: 'Value = add up every investment account, converted to your currency',
+        steps: [
+          ...portfolio.accounts.map((view) => ({
+            label: view.account.name,
+            value: this.money(view.valueBase),
+            hint:
+              view.mode === 'total'
+                ? 'The total you entered for this account'
+                : 'Added up from the investments listed in it (shares × latest price)',
+          })),
+          ...portfolio.unassignedPositions.map((position) => ({
+            label: position.investment.name,
+            value: this.money(position.currentValueBase),
+            hint: `Not in an account · ${position.investment.quantity} × ${this.currency.formatIn(position.investment.currentPrice, position.investment.currency)}`,
+          })),
+        ],
         result: { label: 'Investments value', value: this.money(portfolio.totalValue) },
-        note: 'Update prices on the Investments page and every figure follows.',
+        note: portfolio.staleAccounts
+          ? `${portfolio.staleAccounts} account total${portfolio.staleAccounts > 1 ? 's are' : ' is'} over a month old — the monthly check-in updates them.`
+          : 'Investments you list inside an account valued as a total are a breakdown of it, so they are not added twice.',
+        nextStep: portfolio.staleAccounts ? { label: 'Do your monthly check-in', route: '/check-in' } : undefined,
       };
     },
 
     'portfolio-cost': () => {
       const portfolio = this.store.portfolio();
-      if (!portfolio || !portfolio.positions.length) return null;
+      if (!portfolio || (!portfolio.accounts.length && !portfolio.unassignedPositions.length)) return null;
 
       return {
         ...BASICS['portfolio-cost'],
-        summary: 'What you paid for the investments you still hold — not counting anything you have already sold.',
-        formula: 'Money you put in = add up (number of shares × price you paid per share), converted to your currency',
-        steps: portfolio.positions.map((position) => ({
-          label: position.investment.name,
-          value: this.money(position.costBasisBase),
-          hint: `${position.investment.quantity} × ${this.currency.formatIn(position.investment.averageCost, position.investment.currency)}`,
-        })),
+        formula: 'Money you put in = add up each account: money you added minus money you took out (or, for accounts added up from investments, what you paid for them)',
+        steps: [
+          ...portfolio.accounts.map((view) => ({
+            label: view.account.name,
+            value: this.money(view.moneyInBase),
+            hint:
+              view.mode === 'total'
+                ? 'What was in before tracking, plus money added, minus money taken out'
+                : 'Shares × price you paid per share',
+          })),
+          ...portfolio.unassignedPositions.map((position) => ({
+            label: position.investment.name,
+            value: this.money(position.costBasisBase),
+            hint: `Not in an account · ${position.investment.quantity} × ${this.currency.formatIn(position.investment.averageCost, position.investment.currency)}`,
+          })),
+        ],
         result: { label: 'Money you put in', value: this.money(portfolio.totalCost) },
-        note: 'The price you paid per share is the average of your buys, so buying more at a different price changes it.',
-        source: 'Investments → Record activity.',
+        note: 'Record money you move into or out of an account (on the Investments page or in the monthly check-in) so profit stays accurate.',
+        source: 'Investments → Money in / out.',
       };
     },
 
     'unrealised-gain': () => {
       const portfolio = this.store.portfolio();
-      if (!portfolio || !portfolio.positions.length) return null;
+      if (!portfolio || (!portfolio.accounts.length && !portfolio.positions.length)) return null;
       const gain = portfolio.unrealisedGain;
 
       return {
@@ -645,7 +667,7 @@ export class ExplainService {
         formula: 'Profit on paper = what it’s worth now − money you put in',
         steps: [
           { label: 'Worth now', value: this.money(portfolio.totalValue) },
-          { label: 'Money you put in', value: this.money(portfolio.totalCost), negative: true, hint: 'Add up (shares × price you paid per share)' },
+          { label: 'Money you put in', value: this.money(portfolio.totalCost), negative: true, hint: 'Money added to your accounts, or what you paid for investments' },
         ],
         result: {
           label: 'Profit on paper',

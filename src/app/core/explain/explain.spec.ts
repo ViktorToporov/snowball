@@ -1,9 +1,11 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { FINANCE_REPOSITORY } from '../data/finance.repository';
 import { DemoRepository } from '../data/demo.repository';
 import { AuthService } from '../auth/auth.service';
 import { FinanceStore } from '../state/finance.store';
+import { SupabaseService } from '../supabase/supabase.service';
 import { ExplainKey } from './explain.model';
 import { ExplainService } from './explain.service';
 
@@ -31,6 +33,9 @@ describe('ExplainService', () => {
       providers: [
         DemoRepository,
         { provide: FINANCE_REPOSITORY, useExisting: DemoRepository },
+        // Demo mode regardless of the keys in environment.ts, so a real
+        // session restored by AuthService can't replace the demo user.
+        { provide: SupabaseService, useValue: { isConfigured: false, demoMode: signal(true), maybeDb: null } },
       ],
     });
 

@@ -366,7 +366,7 @@ export function buildDemoDataset(): FinancialDataset {
     for (const [investmentId, share, price, note] of buys) {
       const amount = round2(contribution[i] * share);
       investmentTransactions.push({
-        id: `itx-buy-${i}-${investmentId}`, userId: USER, investmentId, transactionType: 'buy',
+        id: `itx-buy-${i}-${investmentId}`, userId: USER, investmentAccountId: null, investmentId, transactionType: 'buy',
         quantity: round2(amount / price), price: round2(price), amount, fees: 0, currency: 'EUR',
         transactionDate: dayIn(i, 28), notes: note,
       });
@@ -374,14 +374,14 @@ export function buildDemoDataset(): FinancialDataset {
 
     if ((i + 1) % 3 === 0) {
       investmentTransactions.push({
-        id: `itx-div-${i}`, userId: USER, investmentId: ID.vagf, transactionType: 'dividend',
+        id: `itx-div-${i}`, userId: USER, investmentAccountId: null, investmentId: ID.vagf, transactionType: 'dividend',
         quantity: 0, price: 0, amount: round2(70 + random() * 45), fees: 0, currency: 'EUR',
         transactionDate: dayIn(i, 18), notes: 'Quarterly bond distribution',
       });
     }
     if (i === 4 || i === 16) {
       investmentTransactions.push({
-        id: `itx-fee-${i}`, userId: USER, investmentId: ID.asml, transactionType: 'fee',
+        id: `itx-fee-${i}`, userId: USER, investmentAccountId: null, investmentId: ID.asml, transactionType: 'fee',
         quantity: 0, price: 0, amount: round2(9 + random() * 6), fees: 0, currency: 'EUR',
         transactionDate: dayIn(i, 28), notes: 'Custody fee',
       });
@@ -418,7 +418,7 @@ export function buildDemoDataset(): FinancialDataset {
 
   /* ---- the realised sale, part-way through -------------------------- */
   investmentTransactions.push({
-    id: 'itx-sell-eimi', userId: USER, investmentId: ID.eimi, transactionType: 'sell',
+    id: 'itx-sell-eimi', userId: USER, investmentAccountId: null, investmentId: ID.eimi, transactionType: 'sell',
     quantity: 60, price: 32.1, amount: SALE_PROCEEDS, fees: 3.5, currency: 'EUR',
     transactionDate: dayIn(SALE_MONTH, 21), notes: 'Trimmed emerging markets after a run-up',
   });
@@ -427,7 +427,7 @@ export function buildDemoDataset(): FinancialDataset {
   const openedOn = toIsoDate(addMonths(thisMonth, -MONTHS - 1));
   investmentTransactions.unshift(
     ...OPENING_BUYS.map(([investmentId, quantity, price, currency, fees, note]) => ({
-      id: `itx-open-${investmentId}`, userId: USER, investmentId,
+      id: `itx-open-${investmentId}`, userId: USER, investmentAccountId: null, investmentId,
       transactionType: 'buy' as const, quantity, price,
       amount: round2(quantity * price), fees, currency,
       transactionDate: openedOn, notes: note,
@@ -608,15 +608,18 @@ export function buildDemoDataset(): FinancialDataset {
     investmentAccounts: [
       {
         id: ID.brokerT212, userId: USER, name: 'Trading 212 — Invest', broker: 'Trading 212',
-        currency: 'EUR', notes: 'Core ETF holdings and the pie.',
+        currency: 'EUR', currentValue: null, valueUpdatedAt: null, contributedBefore: 0, sortOrder: 0,
+        notes: 'Core ETF holdings and the pie.',
       },
       {
         id: ID.brokerDegiro, userId: USER, name: 'Degiro', broker: 'Degiro',
-        currency: 'EUR', notes: 'Individual shares and the USD-denominated tracker.',
+        currency: 'EUR', currentValue: null, valueUpdatedAt: null, contributedBefore: 0, sortOrder: 0,
+        notes: 'Individual shares and the USD-denominated tracker.',
       },
       {
         id: ID.brokerCrypto, userId: USER, name: 'Coinbase', broker: 'Coinbase',
-        currency: 'EUR', notes: 'Small satellite allocation.',
+        currency: 'EUR', currentValue: null, valueUpdatedAt: null, contributedBefore: 0, sortOrder: 0,
+        notes: 'Small satellite allocation.',
       },
     ],
 

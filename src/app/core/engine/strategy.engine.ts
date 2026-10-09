@@ -12,9 +12,10 @@
  * floor, and it is allowed to vary wildly month to month.
  */
 
-import { addMonths, formatCurrency, monthsUntil, startOfMonth, toIsoDate } from '../money/format';
+import { addMonths, formatCurrency, monthKey, monthsUntil, startOfMonth, toIsoDate } from '../money/format';
 import { FinancialDataset, FinancialPhase, StrategyRule } from '../models/domain.models';
 import { CashFlowMonth, CashSummary, GoalView, PlannedExpenseView, round1, round2 } from './metrics';
+import { investmentFlowsByMonth } from './investment-values';
 
 /**
  * `getting-started` means there is not yet enough history to judge the
@@ -557,27 +558,18 @@ function committed(planned: readonly PlannedExpenseView[]): number {
   return round2(planned.filter((p) => p.monthsUntil <= 3).reduce((total, p) => total + p.remaining, 0));
 }
 
-/** Money paid into investments during the current calendar month. */
+/** Money paid into investments (deposits and buys) during the current calendar month. */
 function monthlyContributions(data: FinancialDataset, input: StrategyInputs): number {
-  const monthStart = toIsoDate(startOfMonth(new Date()));
-  return round2(
-    data.investmentTransactions
-      .filter((t) => t.transactionType === 'buy' && t.transactionDate >= monthStart)
-      .reduce((total, t) => total + (t.amount ?? t.quantity * t.price), 0),
-  );
+  return round2(Math.max(0, investmentFlowsByMonth(data, identity).get(monthKey(new Date())) ?? 0));
 }
 
 /** The same figure for the last complete calendar month. */
 function previousMonthContributions(data: FinancialDataset): number {
-  const thisMonth = startOfMonth(new Date());
-  const from = toIsoDate(addMonths(thisMonth, -1));
-  const to = toIsoDate(thisMonth);
-  return round2(
-    data.investmentTransactions
-      .filter((t) => t.transactionType === 'buy' && t.transactionDate >= from && t.transactionDate < to)
-      .reduce((total, t) => total + (t.amount ?? t.quantity * t.price), 0),
-  );
+  const previous = addMonths(startOfMonth(new Date()), -1);
+  return round2(Math.max(0, investmentFlowsByMonth(data, identity).get(monthKey(previous)) ?? 0));
 }
+
+const identity = (amount: number) => amount;
 
 /* ==================================================================== */
 /* Phase transitions                                                     */

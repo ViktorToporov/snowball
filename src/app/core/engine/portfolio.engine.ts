@@ -9,6 +9,15 @@
 import { money, dec } from '../money/money';
 import { FinancialDataset, Investment } from '../models/domain.models';
 import { Convert, round2 } from './metrics';
+import {
+  InvestmentAccountView,
+  investmentFlowsByMonth,
+  investmentTotals,
+  isTotalMode,
+} from './investment-values';
+
+/** Bucket for account value that isn't broken down into holdings. */
+export const NOT_BROKEN_DOWN = 'Not broken down';
 
 export interface Position {
   investment: Investment;
@@ -24,6 +33,11 @@ export interface Position {
   unrealisedGainBase: number;
   shareOfPortfolio: number;
   dayPriceStale: boolean;
+  /**
+   * False for a holding inside an account valued as a total: it is a
+   * breakdown of that total, not extra money.
+   */
+  countsInTotal: boolean;
 }
 
 export interface PortfolioSummary {
@@ -42,14 +56,19 @@ export interface PortfolioSummary {
   annualisedReturn: number | null;
   weightedExpenseRatio: number | null;
   positions: Position[];
+  /** Every investment account with its value, money in and holdings. */
+  accounts: InvestmentAccountView[];
+  /** Holdings that don't belong to an account. */
+  unassignedPositions: Position[];
+  /** Accounts valued as a total whose figure is over a month old. */
+  staleAccounts: number;
 }
 
 export function portfolioSummary(data: FinancialDataset, convert: Convert): PortfolioSummary {
   const brokers = new Map(data.investmentAccounts.map((a) => [a.id, a.name]));
-
-  const totalValueBase = money
-    .sumBy(data.investments, (i) => convert(i.quantity * i.currentPrice, i.currency))
-    .toNumber();
+  const accountsById = new Map(data.investmentAccounts.map((a) => [a.id, a]));
+  const totals = investmentTotals(data, convert);
+  const totalValueBase = totals.valueBase;
 
   const positions: Position[] = data.investments
     .map((investment) => {
@@ -72,18 +91,22 @@ export function portfolioSummary(data: FinancialDataset, convert: Convert): Port
         unrealisedGainBase: round2(currentValueBase - costBasisBase),
         shareOfPortfolio: totalValueBase > 0 ? (currentValueBase / totalValueBase) * 100 : 0,
         dayPriceStale: isStale(investment.priceUpdatedAt),
+        countsInTotal: !isTotalMode(accountsById.get(investment.investmentAccountId ?? '')),
       };
     })
     .sort((a, b) => b.currentValueBase - a.currentValueBase);
 
-  const totalCost = money.sumBy(positions, (p) => p.costBasisBase).toNumber();
+  // "Cost" is money in: purchase cost for holdings valued individually,
+  // deposits for accounts valued as a total.
+  const totalCost = totals.moneyInBase;
   const realisedGain = money.sumBy(data.investments, (i) => convert(i.realisedGain, i.currency)).toNumber();
 
-  const buys = data.investmentTransactions.filter((t) => t.transactionType === 'buy');
-  const sells = data.investmentTransactions.filter((t) => t.transactionType === 'sell');
+  // Everything that ever moved from cash into investments, net.
   const contributions =
-    money.sumBy(buys, (t) => convert(t.amount ?? t.quantity * t.price, t.currency)).toNumber() -
-    money.sumBy(sells, (t) => convert(t.amount ?? t.quantity * t.price, t.currency)).toNumber();
+    [...investmentFlowsByMonth(data, convert).values()].reduce((a, b) => a + b, 0) +
+    money
+      .sumBy(data.investmentAccounts.filter(isTotalMode), (a) => convert(a.contributedBefore ?? 0, a.currency))
+      .toNumber();
 
   const dividends = money
     .sumBy(
@@ -119,6 +142,9 @@ export function portfolioSummary(data: FinancialDataset, convert: Convert): Port
     annualisedReturn: timeWeightedReturn(data),
     weightedExpenseRatio,
     positions,
+    accounts: totals.accounts,
+    unassignedPositions: positions.filter((p) => totals.unassigned.includes(p.investment)),
+    staleAccounts: totals.accounts.filter((a) => a.stale).length,
   };
 }
 
@@ -177,7 +203,8 @@ export interface AllocationBucket {
 }
 
 /**
- * Actual allocation, derived live from the holdings.
+ * Actual allocation, derived live from the holdings (only the part of the
+ * portfolio broken down into holdings — see the note inside).
  *
  * A holding can be split across several buckets via
  * `investment_allocations` — that is how a Trading 212 "pie" maps onto
@@ -206,6 +233,10 @@ export function portfolioAllocation(data: FinancialDataset, convert: Convert): A
       actual.set(bucket, (actual.get(bucket) ?? 0) + value);
     }
   }
+
+  // Money in a total-valued account that isn't broken down is left out:
+  // nothing is known about what it holds, so it can't be "too much" of
+  // anything, and the shares are of the part that is known.
 
   const total = [...actual.values()].reduce((a, b) => a + b, 0);
   const targets = new Map(data.targetAllocations.map((t) => [t.bucket.toLowerCase(), t]));
@@ -286,10 +317,24 @@ export function allocationBy(
     const label = String(investment[key] ?? 'Unclassified');
     totals.set(label, (totals.get(label) ?? 0) + convert(investment.quantity * investment.currentPrice, investment.currency));
   }
+  addNotBrokenDown(totals, data, convert);
   const grand = [...totals.values()].reduce((a, b) => a + b, 0);
   return [...totals.entries()]
     .map(([label, value]) => ({ label, value: round2(value), share: grand > 0 ? (value / grand) * 100 : 0 }))
     .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * An account valued as a total but only partly broken down into holdings:
+ * the rest still has to show up in "your mix", or the shares won't add up
+ * to what the account is worth.
+ */
+function addNotBrokenDown(into: Map<string, number>, data: FinancialDataset, convert: Convert): void {
+  const remainder = investmentTotals(data, convert).accounts.reduce(
+    (sum, a) => sum + (a.notBrokenDownBase ?? 0),
+    0,
+  );
+  if (remainder > 0) into.set(NOT_BROKEN_DOWN, (into.get(NOT_BROKEN_DOWN) ?? 0) + remainder);
 }
 
 function isStale(priceUpdatedAt: string | null): boolean {

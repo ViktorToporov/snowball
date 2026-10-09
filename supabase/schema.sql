@@ -77,7 +77,11 @@ begin
   end if;
 
   if not exists (select 1 from pg_type where typname = 'investment_txn_type') then
-    create type public.investment_txn_type as enum ('buy', 'sell', 'dividend', 'fee', 'interest');
+    create type public.investment_txn_type as enum (
+      'buy', 'sell', 'dividend', 'fee', 'interest',
+      'deposit',      -- money moved into an investment account
+      'withdrawal'    -- money taken back out of one
+    );
   end if;
 
   if not exists (select 1 from pg_type where typname = 'rental_status') then
@@ -130,6 +134,11 @@ begin
   end if;
 end
 $$;
+
+
+-- Projects created before investment accounts tracked money in and out.
+alter type public.investment_txn_type add value if not exists 'deposit';
+alter type public.investment_txn_type add value if not exists 'withdrawal';
 
 
 -- =====================================================================
@@ -297,19 +306,37 @@ create unique index if not exists income_history_uq
   on public.income_history (user_id, income_source_id, period_month);
 
 -- ---------------------------------------------------------------------
--- investment_accounts — brokers
+-- investment_accounts — where the invested money lives
+--
+-- Two ways to value an account:
+--   current_value set   → the account total as the user last entered it
+--                          (e.g. from the provider's statement). Holdings
+--                          linked to it are an optional breakdown only.
+--   current_value null  → the sum of the holdings linked to it.
 -- ---------------------------------------------------------------------
 create table if not exists public.investment_accounts (
-  id           uuid primary key default gen_random_uuid(),
-  user_id      uuid           not null references auth.users (id) on delete cascade,
-  name         text           not null check (length(btrim(name)) > 0),
-  broker       text,
-  currency     char(3)        not null default 'EUR',
-  account_ref  text,
-  notes        text,
-  created_at   timestamptz    not null default now(),
-  updated_at   timestamptz    not null default now()
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid           not null references auth.users (id) on delete cascade,
+  name                text           not null check (length(btrim(name)) > 0),
+  broker              text,
+  currency            char(3)        not null default 'EUR',
+  account_ref         text,
+  current_value       numeric(18,4)  check (current_value is null or current_value >= 0),
+  value_updated_at    timestamptz,
+  -- Money paid in before Snowball started tracking deposits.
+  contributed_before  numeric(18,4)  not null default 0 check (contributed_before >= 0),
+  sort_order          integer        not null default 0,
+  notes               text,
+  created_at          timestamptz    not null default now(),
+  updated_at          timestamptz    not null default now()
 );
+
+alter table public.investment_accounts add column if not exists current_value numeric(18,4)
+  check (current_value is null or current_value >= 0);
+alter table public.investment_accounts add column if not exists value_updated_at timestamptz;
+alter table public.investment_accounts add column if not exists contributed_before numeric(18,4)
+  not null default 0 check (contributed_before >= 0);
+alter table public.investment_accounts add column if not exists sort_order integer not null default 0;
 
 -- ---------------------------------------------------------------------
 -- investments — holdings
@@ -346,7 +373,8 @@ comment on column public.investments.average_cost is 'Weighted average cost per 
 create table if not exists public.investment_transactions (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid                          not null references auth.users (id) on delete cascade,
-  investment_id     uuid                          not null references public.investments (id) on delete cascade,
+  investment_id     uuid                          references public.investments (id) on delete cascade,
+  investment_account_id uuid                      references public.investment_accounts (id) on delete cascade,
   transaction_type  public.investment_txn_type    not null,
   quantity          numeric(24,8)                 not null default 0 check (quantity >= 0),
   price             numeric(18,6)                 not null default 0 check (price >= 0),
@@ -355,10 +383,23 @@ create table if not exists public.investment_transactions (
   currency          char(3)                       not null default 'EUR',
   transaction_date  date                          not null default current_date,
   notes             text,
-  created_at        timestamptz                   not null default now(),
-  constraint investment_txn_shape_ck check (
-    (transaction_type in ('buy','sell') and quantity > 0)
-    or (transaction_type in ('dividend','fee','interest') and amount is not null)
+  created_at        timestamptz                   not null default now()
+);
+
+-- Deposits and withdrawals belong to an account rather than a holding.
+alter table public.investment_transactions add column if not exists investment_account_id uuid
+  references public.investment_accounts (id) on delete cascade;
+alter table public.investment_transactions alter column investment_id drop not null;
+
+-- Compared as text so this also runs in the same transaction that adds
+-- the 'deposit' / 'withdrawal' enum values to an older project.
+alter table public.investment_transactions drop constraint if exists investment_txn_shape_ck;
+alter table public.investment_transactions add constraint investment_txn_shape_ck check (
+  (investment_id is not null or investment_account_id is not null)
+  and (
+    (transaction_type::text in ('buy','sell') and quantity > 0 and investment_id is not null)
+    or (transaction_type::text in ('dividend','fee','interest') and amount is not null)
+    or (transaction_type::text in ('deposit','withdrawal') and amount > 0 and investment_account_id is not null)
   )
 );
 
@@ -683,6 +724,7 @@ create index if not exists investments_user_idx             on public.investment
 create index if not exists investments_account_idx          on public.investments (investment_account_id);
 create index if not exists investment_txn_user_date_idx     on public.investment_transactions (user_id, transaction_date desc);
 create index if not exists investment_txn_investment_idx    on public.investment_transactions (investment_id, transaction_date);
+create index if not exists investment_txn_account_idx       on public.investment_transactions (investment_account_id, transaction_date);
 create index if not exists investment_allocations_user_idx  on public.investment_allocations (user_id);
 create index if not exists target_allocations_user_idx      on public.target_allocations (user_id);
 create index if not exists properties_user_idx              on public.properties (user_id);
@@ -986,26 +1028,48 @@ $$;
 
 -- ---- Investments -------------------------------------------------------
 
+-- An account with a current_value is valued at that figure; its holdings
+-- are only a breakdown. Every other holding is valued at quantity × price.
+-- Mirrors `investmentTotals()` in core/engine/investment-values.ts.
 create or replace function public.portfolio_value(p_user uuid default auth.uid())
 returns numeric
 language sql
 stable
 security invoker
 as $$
-  select coalesce(sum(public.convert_amount(i.quantity * i.current_price, i.currency, public.base_currency(p_user))), 0)
-  from public.investments i
-  where i.user_id = p_user;
+  select
+    coalesce((select sum(public.convert_amount(a.current_value, a.currency, public.base_currency(p_user)))
+                from public.investment_accounts a
+               where a.user_id = p_user and a.current_value is not null), 0)
+  + coalesce((select sum(public.convert_amount(i.quantity * i.current_price, i.currency, public.base_currency(p_user)))
+                from public.investments i
+                left join public.investment_accounts a on a.id = i.investment_account_id
+               where i.user_id = p_user and a.current_value is null), 0);
 $$;
 
+-- Money put in: deposits (plus what went in before tracking) for accounts
+-- valued as a total, purchase cost for holdings valued individually.
 create or replace function public.portfolio_cost_basis(p_user uuid default auth.uid())
 returns numeric
 language sql
 stable
 security invoker
 as $$
-  select coalesce(sum(public.convert_amount(i.quantity * i.average_cost, i.currency, public.base_currency(p_user))), 0)
-  from public.investments i
-  where i.user_id = p_user;
+  select
+    coalesce((select sum(public.convert_amount(a.contributed_before, a.currency, public.base_currency(p_user)))
+                from public.investment_accounts a
+               where a.user_id = p_user and a.current_value is not null), 0)
+  + coalesce((select sum(public.convert_amount(
+                       case when t.transaction_type::text = 'deposit' then t.amount else -t.amount end,
+                       t.currency, public.base_currency(p_user)))
+                from public.investment_transactions t
+                join public.investment_accounts a on a.id = t.investment_account_id
+               where t.user_id = p_user and a.current_value is not null
+                 and t.transaction_type::text in ('deposit','withdrawal')), 0)
+  + coalesce((select sum(public.convert_amount(i.quantity * i.average_cost, i.currency, public.base_currency(p_user)))
+                from public.investments i
+                left join public.investment_accounts a on a.id = i.investment_account_id
+               where i.user_id = p_user and a.current_value is null), 0);
 $$;
 
 -- ---- Property ----------------------------------------------------------
@@ -1273,13 +1337,20 @@ contributions_by_month as (
   select
     t.user_id,
     date_trunc('month', t.transaction_date)::date as period_month,
+    -- Money that left cash for investments: deposits into accounts, and
+    -- buys of holdings that aren't inside an account valued as a total
+    -- (a buy inside one just moves money that was already deposited).
     coalesce(sum(public.convert_amount(coalesce(t.amount, t.quantity * t.price), t.currency,
                                        public.base_currency(t.user_id)))
-             filter (where t.transaction_type = 'buy'), 0)
+             filter (where t.transaction_type::text = 'deposit'
+                        or (t.transaction_type::text = 'buy' and ta.current_value is null)), 0)
     - coalesce(sum(public.convert_amount(coalesce(t.amount, t.quantity * t.price), t.currency,
                                          public.base_currency(t.user_id)))
-             filter (where t.transaction_type = 'sell'), 0) as contributed
+             filter (where t.transaction_type::text = 'withdrawal'
+                        or (t.transaction_type::text = 'sell' and ta.current_value is null)), 0) as contributed
   from public.investment_transactions t
+  left join public.investments ti on ti.id = t.investment_id
+  left join public.investment_accounts ta on ta.id = ti.investment_account_id
   group by t.user_id, date_trunc('month', t.transaction_date)
 ),
 joined as (

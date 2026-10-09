@@ -24,7 +24,7 @@ export type ExpenseFrequency = 'monthly' | 'quarterly' | 'annual';
 export type IncomeType = 'salary' | 'bonus' | 'rental' | 'investment' | 'freelance' | 'other';
 export type IncomeFrequency = 'monthly' | 'quarterly' | 'annual' | 'one_off';
 export type AssetType = 'etf' | 'stock' | 'bond' | 'mutual_fund' | 'crypto' | 'reit' | 'commodity' | 'other';
-export type InvestmentTxnType = 'buy' | 'sell' | 'dividend' | 'fee' | 'interest';
+export type InvestmentTxnType = 'buy' | 'sell' | 'dividend' | 'fee' | 'interest' | 'deposit' | 'withdrawal';
 export type RentalStatus = 'owner_occupied' | 'rented' | 'vacant' | 'listed';
 export type GoalType =
   | 'emergency_fund'
@@ -146,12 +146,26 @@ export interface IncomeHistoryEntry {
   currency: Currency;
 }
 
+/**
+ * Where invested money lives — a broker, platform, pension pot or fund.
+ *
+ * Valued one of two ways:
+ * - `currentValue` set: the account total as last entered (from the
+ *   provider's statement). Holdings linked to it are an optional
+ *   breakdown and are not added on top.
+ * - `currentValue` null: the sum of its holdings (quantity × price).
+ */
 export interface InvestmentAccount {
   id: string;
   userId: string;
   name: string;
   broker: string | null;
   currency: Currency;
+  currentValue: number | null;
+  valueUpdatedAt: string | null;
+  /** Money paid in before deposits were tracked here. */
+  contributedBefore: number;
+  sortOrder: number;
   notes: string | null;
 }
 
@@ -179,7 +193,10 @@ export interface Investment {
 export interface InvestmentTransaction {
   id: string;
   userId: string;
-  investmentId: string;
+  /** Set for buys, sells and holding-level income. */
+  investmentId: string | null;
+  /** Set for deposits and withdrawals (and account-level income or fees). */
+  investmentAccountId: string | null;
   transactionType: InvestmentTxnType;
   quantity: number;
   price: number;
