@@ -1,0 +1,93 @@
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+}
+.chip--system {
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+}
+.chip__remove {
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px;
+  border-radius: 4px;
+}
+.chip__remove:hover { color: var(--negative); background: var(--negative-soft); }
+
+/* ------------------------------------------------------------------ */
+
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+.theme-option:hover { border-color: var(--line-strong); }
+.theme-option.is-active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-weight: 570;
+}
+
+.theme-option__swatch {
+  width: 44px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+}
+.theme-option__swatch--light { background: linear-gradient(135deg, #ffffff 50%, #f4f5f7 50%); }
+.theme-option__swatch--dark { background: linear-gradient(135deg, #12151c 50%, #0a0c11 50%); }
+.theme-option__swatch--system { background: linear-gradient(135deg, #ffffff 50%, #12151c 50%); }
+
+/* ------------------------------------------------------------------ */
+
+.kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.kv:last-of-type { border-bottom: 0; }
+.kv__label { font-size: 12.5px; color: var(--ink-muted); }
+.kv__value { font-size: 13px; font-weight: 550; text-align: right; min-width: 0; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+}

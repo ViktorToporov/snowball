@@ -1,0 +1,111 @@
+.horizons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.horizon {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.horizon__years {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.horizon__value {
+  font-size: 27px;
+  font-weight: 650;
+  letter-spacing: -0.028em;
+  line-height: 1.15;
+}
+.horizon__label { font-size: 11.5px; color: var(--ink-muted); }
+
+.horizon__parts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.horizon__parts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.horizon__parts dt { font-size: 11.5px; color: var(--ink-muted); }
+.horizon__parts dd {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 570;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
+
+.assumptions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 18px;
+}
+.assumption { display: flex; flex-direction: column; gap: 6px; }
+.assumption__label {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--ink-secondary);
+}
+.assumption--switch {
+  flex-direction: row;
+  align-items: center;
+  align-self: end;
+  padding-bottom: 8px;
+}
+
+/* ------------------------------------------------------------------ */
+
+.milestones { display: flex; flex-direction: column; gap: 12px; }
+.milestone { display: flex; gap: 11px; align-items: flex-start; }
+.milestone__dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--brand);
+}
+.milestone__dot--security { background: var(--positive); }
+.milestone__dot--debt { background: var(--series-6); }
+.milestone__dot--goal { background: var(--series-4); }
+.milestone__label { font-size: 13.5px; font-weight: 560; }
+.milestone__date { font-size: 11.5px; color: var(--ink-muted); }
+
+.mini-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin: 0;
+}
+.mini-facts dt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 2px;
+}
+.mini-facts dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 570;
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,48 @@
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px 24px;
+}
+
+.hero__main { display: flex; flex-direction: column; gap: 4px; }
+
+.hero__value {
+  font-size: clamp(38px, 5vw, 52px);
+  font-weight: 660;
+  letter-spacing: -0.034em;
+  line-height: 1.02;
+  color: var(--ink);
+}
+
+.hero__equation {
+  font-size: 13.5px;
+  color: var(--ink-secondary);
+}
+
+.hero__deltas {
+  display: flex;
+  gap: 28px;
+}
+.hero__delta { display: flex; flex-direction: column; gap: 2px; }
+.hero__delta-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.hero__delta-value {
+  font-size: 19px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+}
+
+.total-row td {
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 0;
+  font-weight: 620;
+  background: var(--surface-sunken);
+}

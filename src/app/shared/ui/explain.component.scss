@@ -1,0 +1,205 @@
+:host {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.explain {
+  display: inline-flex;
+  position: relative;
+}
+
+/* ------------------------------------------------------------------ */
+/* The trigger — present but never competing with the figure it sits by */
+/* ------------------------------------------------------------------ */
+
+.explain__trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: color 0.14s ease, background-color 0.14s ease;
+}
+.explain__trigger svg { width: 14px; height: 14px; }
+.explain__trigger:hover,
+.explain__trigger.is-open {
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+.explain__trigger:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* The panel                                                           */
+/* ------------------------------------------------------------------ */
+
+@keyframes sb-explain-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.explain__panel {
+  position: fixed;
+  z-index: 800;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  padding: 14px 16px 15px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  animation: sb-explain-in 0.14s ease;
+  cursor: default;
+
+  /* The trigger often sits inside an uppercase eyebrow or a bold value.
+     The panel is its own context, so inherited typography is reset. */
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: normal;
+}
+
+.explain__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.explain__title {
+  font-size: 13.5px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.explain__close {
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.explain__close:hover { background: var(--surface-hover); color: var(--ink); }
+
+.explain__summary {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+  margin-top: 4px;
+}
+
+.explain__formula {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--brand-ink);
+  background: var(--brand-soft);
+  border-radius: var(--r-sm);
+  padding: 7px 9px;
+  margin-top: 10px;
+}
+
+.explain__eyebrow {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-top: 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* The worked example                                                  */
+/* ------------------------------------------------------------------ */
+
+.explain__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 5px;
+}
+
+.explain__step {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.explain__sign {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.explain__step-body { display: flex; flex-direction: column; min-width: 0; }
+
+.explain__step-label {
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.explain__hint {
+  font-size: 11px;
+  color: var(--ink-muted);
+  line-height: 1.4;
+  margin-top: 1px;
+}
+
+.explain__step-value {
+  font-size: 12px;
+  font-weight: 560;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.explain__result {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 640;
+  color: var(--ink);
+}
+
+.explain__note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  margin-top: 10px;
+}
+
+.explain__source {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explain__panel { animation: none; }
+}
