@@ -613,6 +613,28 @@ svg { display: block; }
 .table__primary { font-weight: 550; }
 .table__meta { font-size: 12px; color: var(--ink-muted); }
 
+/* `.table--stack`: on phones each row becomes a small card, with the
+   column name taken from the cell's `data-label`. Saves the user from
+   scrolling sideways through a nine-column table.
+     <td data-label="Balance">…</td> */
+@media (max-width: 700px) {
+  .table--stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table--stack, .table--stack tbody, .table--stack tr, .table--stack td { display: block; width: 100%; }
+  .table--stack tr { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .table--stack tbody tr:last-child { border-bottom: 0; }
+  .table--stack td {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 4px 0; border: 0; text-align: right;
+  }
+  .table--stack td[data-label]::before {
+    content: attr(data-label);
+    flex: none; text-align: left;
+    font-size: 12px; color: var(--ink-muted); font-weight: 550;
+  }
+  .table--stack td:first-child { display: block; text-align: left; padding-bottom: 6px; }
+  .table--stack td:first-child::before { display: none; }
+}
+
 /* ---------------------------------------------------------------------
    Skeletons, empty & error states
    --------------------------------------------------------------------- */
@@ -716,8 +738,11 @@ svg { display: block; }
   display: flex;
   flex-direction: column;
   gap: 14px;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
   animation: sb-dialog-in .2s cubic-bezier(.32,.72,0,1);
 }
+.dialog--wide { width: min(640px, 100%); }
 
 /* ---------------------------------------------------------------------
    Chart chrome (shared by every chart component)

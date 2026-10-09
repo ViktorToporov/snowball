@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 
-import { FinancialDataset, WritableTable } from '../models/domain.models';
+import { FinancialDataset, IncomeEntryInput, SnapshotRecord, WritableTable } from '../models/domain.models';
 import { buildDemoDataset } from './demo-dataset';
 import { FinanceRepository } from './finance.repository';
 
@@ -26,6 +26,7 @@ const TABLE_TO_COLLECTION: Record<WritableTable, keyof FinancialDataset> = {
   strategy_priorities: 'strategyPriorities',
   planned_expenses: 'plannedExpenses',
   forecast_scenarios: 'scenarios',
+  income_history: 'incomeHistory',
   net_worth_snapshots: 'netWorthSnapshots',
 };
 
@@ -77,6 +78,49 @@ export class DemoRepository implements FinanceRepository {
 
   async updateProfile(_userId: string, values: Record<string, unknown>): Promise<void> {
     Object.assign(this.data.profile, values);
+    this.persist();
+  }
+
+  async recordSnapshot(_userId: string, snapshot: SnapshotRecord): Promise<void> {
+    const userId = this.data.profile.id;
+    const date = snapshot.snapshotDate;
+    const month = date.slice(0, 7);
+    // One reading per month, mirroring the Supabase implementation.
+    const otherMonth = (row: { snapshotDate: string }) => row.snapshotDate.slice(0, 7) !== month;
+
+    this.data.accountBalanceSnapshots = [
+      ...this.data.accountBalanceSnapshots.filter(otherMonth),
+      ...snapshot.accounts.map((a) => ({
+        id: cryptoId(), userId, accountId: a.accountId, snapshotDate: date, balance: a.balance,
+      })),
+    ];
+    this.data.netWorthSnapshots = [
+      ...this.data.netWorthSnapshots.filter(otherMonth),
+      { id: cryptoId(), userId, snapshotDate: date, currency: snapshot.currency, ...snapshot.netWorth },
+    ];
+    this.data.portfolioSnapshots = [
+      ...this.data.portfolioSnapshots.filter(otherMonth),
+      { id: cryptoId(), userId, snapshotDate: date, currency: snapshot.currency, ...snapshot.portfolio },
+    ];
+    this.persist();
+  }
+
+  async recordIncome(_userId: string, entries: readonly IncomeEntryInput[]): Promise<void> {
+    const userId = this.data.profile.id;
+    for (const entry of entries) {
+      const existing = this.data.incomeHistory.find(
+        (h) => h.incomeSourceId === entry.incomeSourceId && h.periodMonth === entry.periodMonth,
+      );
+      if (existing) {
+        existing.netAmount = entry.netAmount;
+        existing.currency = entry.currency;
+      } else {
+        this.data.incomeHistory.push({
+          id: cryptoId(), userId, incomeSourceId: entry.incomeSourceId, periodMonth: entry.periodMonth,
+          netAmount: entry.netAmount, grossAmount: null, currency: entry.currency,
+        });
+      }
+    }
     this.persist();
   }
 

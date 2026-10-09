@@ -154,7 +154,10 @@ begin
     insert into auth.users (
       instance_id, id, aud, role, email, encrypted_password,
       email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-      created_at, updated_at
+      created_at, updated_at,
+      -- GoTrue cannot scan NULL into these token columns and fails the
+      -- sign-in with "Database error querying schema", so set them to ''.
+      confirmation_token, recovery_token, email_change_token_new, email_change
     ) values (
       '00000000-0000-0000-0000-000000000000',
       v_user, 'authenticated', 'authenticated', v_demo_email,
@@ -162,7 +165,8 @@ begin
       now(),
       '{"provider":"email","providers":["email"]}'::jsonb,
       '{"display_name":"Alex Delaney"}'::jsonb,
-      now() - interval '25 months', now()
+      now() - interval '25 months', now(),
+      '', '', '', ''
     );
 
     insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)

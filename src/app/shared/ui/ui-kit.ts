@@ -4,6 +4,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output } f
 import { CurrencyService } from '../../core/money/currency.service';
 import { ExplainKey } from '../../core/explain/explain.model';
 import { ToastService } from '../../core/ui/toast.service';
+import { ViewPrefsService } from '../../core/ui/view-prefs.service';
+import { DialogDirective } from './dialog.directive';
 import { ExplainComponent } from './explain.component';
 
 /* ==================================================================== */
@@ -192,7 +194,7 @@ export class SkeletonComponent {
 @Component({
   selector: 'sb-confirm',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, DialogDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (open()) {
@@ -202,6 +204,8 @@ export class SkeletonComponent {
           role="alertdialog"
           aria-modal="true"
           [attr.aria-label]="title()"
+          sbDialog
+          (dismiss)="cancelled.emit()"
           (click)="$event.stopPropagation()"
         >
           <div>
@@ -340,4 +344,57 @@ export class MoneyComponent {
 export class StatusPillComponent {
   readonly tone = input<'good' | 'warn' | 'bad' | 'info'>('info');
   readonly label = input.required<string>();
+}
+
+/* ==================================================================== */
+/* Advanced-details switch                                               */
+/* ==================================================================== */
+
+/**
+ * One switch, shared by every page: reveals the investor-grade figures
+ * that most people never need. The choice is remembered per browser.
+ *
+ *     <sb-advanced-toggle />
+ *     @if (prefs.advanced()) { …time-weighted return… }
+ */
+@Component({
+  selector: 'sb-advanced-toggle',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <button
+      type="button"
+      class="adv"
+      role="switch"
+      [attr.aria-checked]="prefs.advanced()"
+      (click)="prefs.toggleAdvanced()"
+    >
+      <span class="adv__track" aria-hidden="true"><span class="adv__thumb"></span></span>
+      <span>Advanced details</span>
+    </button>
+  `,
+  styles: [
+    `
+      .adv {
+        display: inline-flex; align-items: center; gap: 8px;
+        min-height: 32px; padding: 4px 8px; border: 0; border-radius: var(--r-sm);
+        background: none; color: var(--ink-secondary); font: inherit; font-size: 12.5px; font-weight: 550;
+        cursor: pointer;
+      }
+      .adv:hover { background: var(--surface-hover); }
+      .adv__track {
+        position: relative; width: 28px; height: 16px; border-radius: var(--r-pill);
+        background: var(--line-strong, var(--line)); transition: background-color .15s ease;
+      }
+      .adv__thumb {
+        position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+        background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s ease;
+      }
+      .adv[aria-checked='true'] .adv__track { background: var(--brand); }
+      .adv[aria-checked='true'] .adv__thumb { transform: translateX(12px); }
+    `,
+  ],
+})
+export class AdvancedToggleComponent {
+  readonly prefs = inject(ViewPrefsService);
 }

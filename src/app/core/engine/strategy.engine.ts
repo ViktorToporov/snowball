@@ -16,7 +16,13 @@ import { addMonths, formatCurrency, monthsUntil, startOfMonth, toIsoDate } from 
 import { FinancialDataset, FinancialPhase, StrategyRule } from '../models/domain.models';
 import { CashFlowMonth, CashSummary, GoalView, PlannedExpenseView, round1, round2 } from './metrics';
 
-export type StrategyStatus = 'on-track' | 'ahead' | 'attention' | 'off-track';
+/**
+ * `getting-started` means there is not yet enough history to judge the
+ * plan: no account, or fewer than one complete month between check-ins.
+ * Judging a brand-new account as "off track" would be both wrong and
+ * discouraging.
+ */
+export type StrategyStatus = 'getting-started' | 'on-track' | 'ahead' | 'attention' | 'off-track';
 
 export interface RuleEvaluation {
   rule: StrategyRule;
@@ -109,7 +115,9 @@ export function assessStrategy(input: StrategyInputs): StrategyAssessment {
   /* -- signals ------------------------------------------------------ */
   const signals: StrategySignal[] = [];
 
-  if (shortfall > 0 && recentMonthlySaving <= 0) {
+  const enoughHistory = data.accounts.some((a) => !a.isArchived) && window.length > 0;
+
+  if (enoughHistory && shortfall > 0 && recentMonthlySaving <= 0) {
     signals.push({
       tone: 'bad',
       title: 'Cash is not growing',
@@ -191,6 +199,7 @@ export function assessStrategy(input: StrategyInputs): StrategyAssessment {
 
   /* -- overall status ----------------------------------------------- */
   const status = deriveStatus({
+    enoughHistory,
     shortfall,
     recentMonthlySaving,
     monthsToSecurity,
@@ -230,6 +239,7 @@ export function assessStrategy(input: StrategyInputs): StrategyAssessment {
 }
 
 const HEADLINES: Record<StrategyStatus, string> = {
+  'getting-started': 'Getting started',
   ahead: 'Ahead of plan',
   'on-track': 'On track',
   attention: 'Needs attention',
@@ -237,6 +247,7 @@ const HEADLINES: Record<StrategyStatus, string> = {
 };
 
 function deriveStatus(input: {
+  enoughHistory: boolean;
   shortfall: number;
   recentMonthlySaving: number;
   monthsToSecurity: number | null;
@@ -245,6 +256,7 @@ function deriveStatus(input: {
   signals: readonly StrategySignal[];
 }): StrategyStatus {
   if (input.signals.some((s) => s.tone === 'bad')) return 'off-track';
+  if (!input.enoughHistory) return 'getting-started';
 
   // Nothing left to build. "Ahead" is reserved for a clean sheet: cash
   // still accumulating *and* nothing flagged. Otherwise the headline
@@ -274,6 +286,10 @@ function buildExplanation(input: {
   fmt: (value: number) => string;
 }): string {
   const { fmt } = input;
+
+  if (input.status === 'getting-started') {
+    return 'Snowball learns how your money moves from one monthly check-in to the next. Add your accounts and income, then come back next month for your first verdict.';
+  }
 
   if (input.shortfall <= 0) {
     return `Your emergency fund is complete at ${fmt(input.emergencyBalance)}. ${fmt(input.availableAboveFloor)} sits above the security floor and is genuinely free to allocate.`;

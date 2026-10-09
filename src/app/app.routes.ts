@@ -8,6 +8,14 @@ import { authGuard, guestGuard } from './core/auth/auth.guard';
  */
 export const routes: Routes = [
   {
+    // Outside the guest guard: the recovery link signs the user in first.
+    path: 'auth/reset-password',
+    title: 'Reset password · Snowball',
+    loadComponent: () =>
+      import('./features/auth/reset-password.component').then((m) => m.ResetPasswordComponent),
+  },
+
+  {
     path: 'auth',
     canActivate: [guestGuard],
     children: [
@@ -76,6 +84,12 @@ export const routes: Routes = [
         title: 'Forecasts · Snowball',
         loadComponent: () =>
           import('./features/forecasts/forecasts.component').then((m) => m.ForecastsComponent),
+      },
+      {
+        path: 'check-in',
+        title: 'Monthly check-in · Snowball',
+        loadComponent: () =>
+          import('./features/check-in/check-in.component').then((m) => m.CheckInComponent),
       },
       {
         path: 'settings',

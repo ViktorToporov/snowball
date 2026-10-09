@@ -21,6 +21,7 @@ import {
   PlannedExpense,
   Property,
   RecurringExpense,
+  SnapshotRecord,
 } from '../models/domain.models';
 
 /** Converts an amount from a source currency into the base currency. */
@@ -486,6 +487,46 @@ export function netWorthSummary(data: FinancialDataset, convert: Convert): NetWo
     changeMonth: monthAgo ? round2(netWorth - monthAgo.netWorth) : null,
     changeMonthPercent: monthAgo ? money.changePercent(netWorth, monthAgo.netWorth) : null,
     changeYear: yearAgo ? round2(netWorth - yearAgo.netWorth) : null,
+  };
+}
+
+/**
+ * Today's balances as a snapshot record, in the base currency.
+ *
+ * Credit cards are left out of the account readings (they are debt, not
+ * cash), matching `totalCashHistory`. Portfolio contributions come from
+ * the cost basis of what is currently held.
+ */
+export function buildSnapshot(
+  data: FinancialDataset,
+  convert: Convert,
+  currency: string,
+  date: Date = new Date(),
+): SnapshotRecord {
+  const worth = netWorthSummary(data, convert);
+  const contributions = money
+    .sumBy(data.investments, (i) => convert(i.quantity * i.averageCost, i.currency))
+    .toNumber();
+
+  return {
+    snapshotDate: toIsoDate(date),
+    currency,
+    accounts: data.accounts
+      .filter((a) => !a.isArchived && a.accountType !== 'credit_card')
+      .map((a) => ({ accountId: a.id, balance: round2(convert(a.balance, a.currency)) })),
+    netWorth: {
+      cashValue: worth.cash,
+      investmentValue: worth.investments,
+      propertyValue: worth.propertyValue,
+      otherAssets: worth.otherAssets,
+      liabilities: worth.totalLiabilities,
+      netWorth: worth.netWorth,
+    },
+    portfolio: {
+      totalValue: worth.investments,
+      totalContributions: round2(contributions),
+      totalGain: round2(worth.investments - contributions),
+    },
   };
 }
 

@@ -58,10 +58,12 @@ export class AuthService {
       return;
     }
 
+    // Subscribe first so nothing emitted while the session is restored
+    // (e.g. from a confirmation or recovery link in the URL) is missed.
+    this.supabase.db.auth.onAuthStateChange((_event, session) => this.apply(session));
+
     const { data } = await this.supabase.db.auth.getSession();
     this.apply(data.session);
-
-    this.supabase.db.auth.onAuthStateChange((_event, session) => this.apply(session));
     this._ready.set(true);
   }
 
@@ -85,7 +87,10 @@ export class AuthService {
     const { data, error } = await this.supabase.db.auth.signUp({
       email,
       password,
-      options: { data: { display_name: displayName } },
+      options: {
+        data: { display_name: displayName },
+        emailRedirectTo: `${window.location.origin}/dashboard`,
+      },
     });
     if (error) return { ok: false, message: friendly(error.message) };
 
@@ -101,8 +106,20 @@ export class AuthService {
       return { ok: false, message: 'Password reset is unavailable in demo mode.' };
     }
     const { error } = await this.supabase.db.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/sign-in`,
+      redirectTo: `${window.location.origin}/auth/reset-password`,
     });
+    return error ? { ok: false, message: friendly(error.message) } : { ok: true };
+  }
+
+  /**
+   * Sets a new password for the signed-in user. Used both by the
+   * recovery link (which signs the user in) and by Settings.
+   */
+  async updatePassword(password: string): Promise<AuthResult> {
+    if (!this.supabase.isConfigured) {
+      return { ok: false, message: 'Passwords cannot be changed in demo mode.' };
+    }
+    const { error } = await this.supabase.db.auth.updateUser({ password });
     return error ? { ok: false, message: friendly(error.message) } : { ok: true };
   }
 
@@ -138,7 +155,7 @@ export class AuthService {
       setTimeout(() => {
         clearInterval(poll);
         resolve();
-      }, 4000);
+      }, 10000);
     });
   }
 }
@@ -150,5 +167,6 @@ function friendly(message: string): string {
   if (m.includes('already registered')) return 'An account already exists for that email address.';
   if (m.includes('password should be')) return 'Passwords must be at least 6 characters.';
   if (m.includes('rate limit')) return 'Too many attempts. Try again in a minute.';
+  if (m.includes('should be different')) return 'Choose a password you have not used here before.';
   return message;
 }

@@ -66,9 +66,8 @@ type Mode = 'sign-in' | 'sign-up';
           @if (demoMode()) {
             <div class="estimate-note">
               <span>
-                <strong>Demo mode.</strong> No Supabase project is configured, so Snowball is running on a
-                bundled sample dataset held in this browser. Add your credentials to
-                <code>src/environments/environment.ts</code> to connect a real backend.
+                <strong>Demo mode.</strong> You're exploring a made-up household. Everything stays in this
+                browser and nothing is sent anywhere.
               </span>
             </div>
           }
@@ -170,12 +169,12 @@ export class AuthPageComponent {
 
   readonly points = [
     {
-      title: 'A security score, not a guilt trip',
-      text: 'How many months of expenses you can cover, and exactly what would move the number.',
+      title: 'A safety score, not a guilt trip',
+      text: 'How many months you could live on your savings, and exactly what would move the number.',
     },
     {
       title: 'Flexible spending, on purpose',
-      text: 'No rigid monthly budget. See what sits above your security floor and spend it deliberately.',
+      text: 'No rigid monthly budget. See what is free once your safety cushion and upcoming bills are covered.',
     },
     {
       title: 'Forecasts with visible assumptions',

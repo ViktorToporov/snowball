@@ -445,4 +445,32 @@ export type WritableTable =
   | 'strategy_priorities'
   | 'planned_expenses'
   | 'forecast_scenarios'
+  | 'income_history'
   | 'net_worth_snapshots';
+
+/**
+ * One reading of every balance, taken whenever values change or the user
+ * does a monthly check-in. Only the latest reading in each calendar
+ * month is kept — that is what the history charts and the derived
+ * spending in `monthlyCashFlow` are built from. All amounts are in the
+ * base currency.
+ */
+export interface SnapshotRecord {
+  snapshotDate: Iso8601Date;
+  currency: Currency;
+  accounts: Array<{ accountId: string; balance: number }>;
+  netWorth: Pick<
+    NetWorthSnapshot,
+    'cashValue' | 'investmentValue' | 'propertyValue' | 'otherAssets' | 'liabilities' | 'netWorth'
+  >;
+  portfolio: Pick<PortfolioSnapshot, 'totalValue' | 'totalContributions' | 'totalGain'>;
+}
+
+/** Money actually received from one income source in one month. */
+export interface IncomeEntryInput {
+  incomeSourceId: string;
+  /** First day of the month. */
+  periodMonth: Iso8601Date;
+  netAmount: number;
+  currency: Currency;
+}

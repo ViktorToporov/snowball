@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { PostgrestError } from '@supabase/supabase-js';
 
-import { FinancialDataset, WritableTable } from '../models/domain.models';
+import { addMonths, startOfMonth, toIsoDate } from '../money/format';
+import { FinancialDataset, IncomeEntryInput, SnapshotRecord, WritableTable } from '../models/domain.models';
 import { SupabaseService } from '../supabase/supabase.service';
 import { FinanceRepository } from './finance.repository';
 import * as map from './mappers';
@@ -127,6 +128,66 @@ export class SupabaseRepository implements FinanceRepository {
       .from('profiles')
       .update(toRow(values) as never)
       .eq('id', userId);
+    if (error) throw describe(error);
+  }
+
+  async recordSnapshot(userId: string, snapshot: SnapshotRecord): Promise<void> {
+    const db = this.supabase.db;
+    const date = snapshot.snapshotDate;
+    const monthStart = toIsoDate(startOfMonth(new Date(`${date}T00:00:00`)));
+    const nextMonth = toIsoDate(addMonths(new Date(`${monthStart}T00:00:00`), 1));
+
+    // One reading per month: drop earlier readings from this month first.
+    const tables = ['account_balance_snapshots', 'net_worth_snapshots', 'portfolio_snapshots'] as const;
+    for (const table of tables) {
+      const { error } = await db
+        .from(table)
+        .delete()
+        .eq('user_id', userId)
+        .gte('snapshot_date', monthStart)
+        .lt('snapshot_date', nextMonth)
+        .neq('snapshot_date', date);
+      if (error) throw describe(error);
+    }
+
+    if (snapshot.accounts.length) {
+      const { error } = await db.from('account_balance_snapshots').upsert(
+        snapshot.accounts.map((a) => ({
+          user_id: userId,
+          account_id: a.accountId,
+          snapshot_date: date,
+          balance: a.balance,
+        })) as never,
+        { onConflict: 'account_id,snapshot_date' },
+      );
+      if (error) throw describe(error);
+    }
+
+    const worth = await db.from('net_worth_snapshots').upsert(
+      { ...toRow(snapshot.netWorth), user_id: userId, snapshot_date: date, currency: snapshot.currency } as never,
+      { onConflict: 'user_id,snapshot_date' },
+    );
+    if (worth.error) throw describe(worth.error);
+
+    const portfolio = await db.from('portfolio_snapshots').upsert(
+      { ...toRow(snapshot.portfolio), user_id: userId, snapshot_date: date, currency: snapshot.currency } as never,
+      { onConflict: 'user_id,snapshot_date' },
+    );
+    if (portfolio.error) throw describe(portfolio.error);
+  }
+
+  async recordIncome(userId: string, entries: readonly IncomeEntryInput[]): Promise<void> {
+    if (!entries.length) return;
+    const { error } = await this.supabase.db.from('income_history').upsert(
+      entries.map((e) => ({
+        user_id: userId,
+        income_source_id: e.incomeSourceId,
+        period_month: e.periodMonth,
+        net_amount: e.netAmount,
+        currency: e.currency,
+      })) as never,
+      { onConflict: 'user_id,income_source_id,period_month' },
+    );
     if (error) throw describe(error);
   }
 }

@@ -808,7 +808,7 @@ begin
      'Hold liquid cash equal to the emergency fund target before increasing investment contributions.',
      7000, 1, '{"counts":"emergency_accounts"}'::jsonb),
     (new.id, v_phase1, 'investment', 'Investment Rule',
-     'Minimum monthly investment is €0 while the emergency fund is below target.',
+     'No new investing is required while the emergency fund is below target.',
      0, 2, '{"minimum_monthly":0,"resume_when":"emergency_fund_reached"}'::jsonb),
     (new.id, v_phase1, 'lifestyle', 'Lifestyle Rule',
      'No fixed monthly discretionary limit. Flexible spending comes from cash above the security floor.',
@@ -1142,7 +1142,7 @@ as $$
     when g.target_date <= current_date then greatest(0, g.target_amount - g.current_amount)
     else round(
       greatest(0, g.target_amount - g.current_amount)
-      / greatest(1, ceil(extract(epoch from (g.target_date - current_date)) / 2629746.0)), 2)
+      / greatest(1, ceil((g.target_date - current_date) / 30.436875)), 2)
   end
   from public.goals g
   where g.id = p_goal;
@@ -1330,7 +1330,7 @@ select
        then least(100, round(g.current_amount / g.target_amount * 100, 2)) else 0 end    as progress_percentage,
   case
     when g.target_date is null then null
-    else greatest(1, ceil(extract(epoch from (g.target_date - current_date)) / 2629746.0))
+    else greatest(1, ceil((g.target_date - current_date) / 30.436875))
   end                                                                                    as months_remaining,
   public.goal_required_monthly(g.id)                                                     as required_monthly,
   case
@@ -1437,7 +1437,6 @@ declare
 begin
   foreach t in array owned loop
     execute format('alter table public.%I enable row level security', t);
-    execute format('alter table public.%I force row level security', t);
 
     execute format('drop policy if exists "%1$s_select_own" on public.%1$I', t);
     execute format('drop policy if exists "%1$s_insert_own" on public.%1$I', t);
@@ -1462,7 +1461,6 @@ $$;
 
 -- ---- profiles (keyed on `id`, not `user_id`) ----------------------------
 alter table public.profiles enable row level security;
-alter table public.profiles force row level security;
 
 drop policy if exists "profiles_select_own" on public.profiles;
 drop policy if exists "profiles_insert_own" on public.profiles;
@@ -1478,7 +1476,6 @@ create policy "profiles_update_own" on public.profiles
 
 -- ---- categories: system rows are read-only shared reference data --------
 alter table public.categories enable row level security;
-alter table public.categories force row level security;
 
 drop policy if exists "categories_select" on public.categories;
 drop policy if exists "categories_insert_own" on public.categories;
@@ -1506,6 +1503,8 @@ create policy "exchange_rates_select" on public.exchange_rates
 -- ---- Lock down the default grants --------------------------------------
 revoke all on all tables in schema public from anon;
 revoke all on all functions in schema public from anon;
+-- Functions are executable by PUBLIC by default, which anon inherits.
+revoke execute on all functions in schema public from public;
 
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;

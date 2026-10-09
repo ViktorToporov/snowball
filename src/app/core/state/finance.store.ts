@@ -1,9 +1,10 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import { AuthService } from '../auth/auth.service';
 import { FINANCE_REPOSITORY } from '../data/finance.repository';
 import { assessStrategy, evaluatePhases, StrategyInputs } from '../engine/strategy.engine';
 import {
+  buildSnapshot,
   cashHistory,
   cashSummary,
   totalCashHistory,
@@ -21,10 +22,38 @@ import {
 } from '../engine/metrics';
 import { portfolioAllocation, portfolioSummary, rebalanceSuggestions } from '../engine/portfolio.engine';
 import { CurrencyService } from '../money/currency.service';
-import { FinancialDataset, WritableTable } from '../models/domain.models';
+import { monthKey, startOfMonth, toIsoDate } from '../money/format';
+import { FinancialDataset, IncomeEntryInput, WritableTable } from '../models/domain.models';
 import { ToastService } from '../ui/toast.service';
 
 export type LoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+/** Writes that change a balance or a value, and so warrant a fresh snapshot. */
+const VALUE_TABLES: ReadonlySet<WritableTable> = new Set<WritableTable>([
+  'accounts',
+  'investments',
+  'investment_transactions',
+  'properties',
+  'other_assets',
+  'liabilities',
+]);
+
+/** Everything the monthly check-in can change in one go. */
+export interface CheckInInput {
+  balances: Array<{ accountId: string; balance: number }>;
+  prices: Array<{ investmentId: string; currentPrice: number }>;
+  income: Array<Omit<IncomeEntryInput, 'periodMonth'>>;
+  properties: Array<{ propertyId: string; estimatedValue: number; mortgageBalance: number }>;
+  liabilities: Array<{ liabilityId: string; balance: number }>;
+}
+
+export interface SetupStep {
+  key: 'accounts' | 'income' | 'bills' | 'cushion' | 'check-in';
+  label: string;
+  hint: string;
+  done: boolean;
+  route: string;
+}
 
 /**
  * The single source of financial truth for the UI.
@@ -54,6 +83,27 @@ export class FinanceStore {
   readonly isLoading = computed(() => this._state() === 'loading' || this._state() === 'idle');
   readonly isPersistent = this.repository.persistent;
 
+  /** The user the loaded dataset belongs to. */
+  private loadedFor: string | null = null;
+
+  constructor() {
+    // A different user (or none) must never see the previous user's data.
+    effect(() => {
+      const userId = this.auth.user()?.id ?? null;
+      untracked(() => {
+        if (userId !== this.loadedFor) this.reset();
+      });
+    });
+  }
+
+  /** Forget everything — used on sign-out and when the user changes. */
+  reset(): void {
+    this.loadedFor = null;
+    this._data.set(null);
+    this._error.set(null);
+    this._state.set('idle');
+  }
+
   /* ---------------------------------------------------------------- */
   /* Loading                                                           */
   /* ---------------------------------------------------------------- */
@@ -69,6 +119,9 @@ export class FinanceStore {
 
     try {
       const data = await this.repository.load(userId);
+      // Signed out or switched user while the request was in flight.
+      if (this.auth.user()?.id !== userId) return;
+      this.loadedFor = userId;
       this.currency.loadRates(data.exchangeRates);
       this.currency.setBase(data.profile.baseCurrency, data.profile.locale);
       this._data.set(data);
@@ -88,26 +141,88 @@ export class FinanceStore {
   /* ---------------------------------------------------------------- */
 
   async create(table: WritableTable, values: Record<string, unknown>, label = 'Record'): Promise<boolean> {
-    return this.write(() => this.repository.insert(table, { ...values, userId: this.auth.user()!.id }), `${label} added`);
+    return this.write(
+      () => this.repository.insert(table, { ...values, userId: this.auth.user()!.id }),
+      `${label} added`,
+      VALUE_TABLES.has(table),
+    );
   }
 
   async save(table: WritableTable, id: string, values: Record<string, unknown>, label = 'Record'): Promise<boolean> {
-    return this.write(() => this.repository.update(table, id, values), `${label} updated`);
+    return this.write(() => this.repository.update(table, id, values), `${label} updated`, VALUE_TABLES.has(table));
   }
 
   async destroy(table: WritableTable, id: string, label = 'Record'): Promise<boolean> {
-    return this.write(() => this.repository.remove(table, id), `${label} deleted`);
+    return this.write(() => this.repository.remove(table, id), `${label} deleted`, VALUE_TABLES.has(table));
+  }
+
+  /**
+   * The monthly check-in: every balance, price and value the user just
+   * confirmed, plus this month's income, saved together and then
+   * captured as this month's snapshot.
+   */
+  async checkIn(input: CheckInInput): Promise<boolean> {
+    const userId = this.auth.user()!.id;
+    const periodMonth = toIsoDate(startOfMonth(new Date()));
+    return this.write(
+      async () => {
+        await Promise.all([
+          ...input.balances.map((b) => this.repository.update('accounts', b.accountId, { balance: b.balance })),
+          ...input.prices.map((p) =>
+            this.repository.update('investments', p.investmentId, {
+              currentPrice: p.currentPrice,
+              priceUpdatedAt: new Date().toISOString(),
+            }),
+          ),
+          ...input.properties.map((p) =>
+            this.repository.update('properties', p.propertyId, {
+              estimatedValue: p.estimatedValue,
+              mortgageBalance: p.mortgageBalance,
+            }),
+          ),
+          ...input.liabilities.map((l) =>
+            this.repository.update('liabilities', l.liabilityId, { balance: l.balance }),
+          ),
+        ]);
+        await this.repository.recordIncome(
+          userId,
+          input.income.map((entry) => ({ ...entry, periodMonth })),
+        );
+      },
+      'Check-in saved',
+      true,
+    );
+  }
+
+  /** Records today's balances as this month's snapshot. */
+  async recordSnapshot(): Promise<void> {
+    const data = this._data();
+    const userId = this.auth.user()?.id;
+    if (!data || !userId || !data.accounts.length) return;
+    await this.repository.recordSnapshot(userId, buildSnapshot(data, this.convert(), this.currency.baseCurrency()));
   }
 
   async saveProfile(values: Record<string, unknown>): Promise<boolean> {
     return this.write(() => this.repository.updateProfile(this.auth.user()!.id, values), 'Settings saved');
   }
 
-  private async write(action: () => Promise<unknown>, successMessage: string): Promise<boolean> {
+  private async write(action: () => Promise<unknown>, successMessage: string, snapshot = false): Promise<boolean> {
     this._saving.set(true);
     try {
       await action();
       await this.load(true);
+      if (snapshot) {
+        // History charts and derived spending are built from snapshots.
+        try {
+          await this.recordSnapshot();
+          await this.load(true);
+        } catch (error) {
+          this.toast.error(
+            'Saved, but history was not updated',
+            error instanceof Error ? error.message : 'Unexpected error.',
+          );
+        }
+      }
       this.toast.success(successMessage);
       return true;
     } catch (error) {
@@ -257,6 +372,80 @@ export class FinanceStore {
 
   readonly scenarios = computed(() => this._data()?.scenarios ?? []);
 
+  /* -- first run & monthly check-in --------------------------------- */
+
+  /** Date of the most recent snapshot (any value-changing save counts). */
+  readonly lastUpdated = computed(() =>
+    (this._data()?.netWorthSnapshots ?? []).reduce<string | null>(
+      (latest, s) => (!latest || s.snapshotDate > latest ? s.snapshotDate : latest),
+      null,
+    ),
+  );
+
+  /** Whole days since `lastUpdated`, or null if never. */
+  readonly daysSinceUpdate = computed(() => {
+    const last = this.lastUpdated();
+    if (!last) return null;
+    const ms = localMidnight(new Date()) - localMidnight(new Date(`${last}T00:00:00`));
+    return Math.max(0, Math.round(ms / 86_400_000));
+  });
+
+  /** A check-in is due when nothing has been recorded this calendar month. */
+  readonly checkInDue = computed(() => {
+    const data = this._data();
+    if (!data || !data.accounts.some((a) => !a.isArchived)) return false;
+    const last = this.lastUpdated();
+    return !last || monthKey(last) < monthKey(new Date());
+  });
+
+  /** The first-run checklist. Done steps stay listed so progress shows. */
+  readonly setupSteps = computed<SetupStep[]>(() => {
+    const data = this._data();
+    if (!data) return [];
+    return [
+      {
+        key: 'accounts',
+        label: 'Add your bank accounts',
+        hint: 'Current account, savings, cash at home — anything that holds money.',
+        done: data.accounts.some((a) => !a.isArchived),
+        route: '/cash-flow',
+      },
+      {
+        key: 'income',
+        label: 'Add your income',
+        hint: 'Your take-home pay, and anything else that comes in regularly.',
+        done: data.incomeSources.some((i) => i.active),
+        route: '/cash-flow',
+      },
+      {
+        key: 'bills',
+        label: 'Add your fixed monthly bills',
+        hint: 'Rent or mortgage, utilities, insurance, subscriptions.',
+        done: data.recurringExpenses.some((e) => e.active),
+        route: '/cash-flow',
+      },
+      {
+        key: 'cushion',
+        label: 'Set your safety cushion',
+        hint: 'Money kept aside for emergencies. Three to six months of bills is a common rule of thumb.',
+        done: data.profile.onboarded,
+        route: '/settings',
+      },
+      {
+        key: 'check-in',
+        label: 'Do your first monthly check-in',
+        hint: 'Confirm your balances and pay. Once a month, ideally just after payday.',
+        done: data.incomeHistory.length > 0,
+        route: '/check-in',
+      },
+    ];
+  });
+
+  readonly setupComplete = computed(() => {
+    const steps = this.setupSteps();
+    return steps.length > 0 && steps.every((s) => s.done);
+  });
+
   readonly defaultScenario = computed(
     () => this.scenarios().find((s) => s.isDefault) ?? this.scenarios()[0] ?? null,
   );
@@ -325,6 +514,11 @@ function deltaOf(flow: readonly { income: number; essential: number; flexible: n
   const completed = flow.slice(0, -1);
   if (completed.length < 2) return null;
   return round(completed.at(-1)![key] - completed.at(-2)![key]);
+}
+
+/** Local midnight in ms, so day differences ignore the time of day. */
+function localMidnight(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 function round(value: number): number {

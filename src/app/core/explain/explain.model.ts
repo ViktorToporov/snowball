@@ -17,8 +17,16 @@ export interface ExplainStep {
 
 export interface Explanation {
   title: string;
+  /**
+   * Plain-language verdict for *this* user, shown first: what the figure
+   * says about their situation, ideally against a familiar benchmark
+   * ("4.2 months. Most guides suggest 3 to 6, so you're in good shape.").
+   */
+  meaning?: string;
   /** One sentence: what the number means. */
   summary: string;
+  /** Optional link to the place where the user can act on it. */
+  nextStep?: { label: string; route: string };
   /** The method, written as an equation. */
   formula: string;
   /** The same equation, with this user's actual figures substituted. */
